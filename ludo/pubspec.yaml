@@ -1,0 +1,20 @@
+name: ludo
+description: Race Board - an original offline Ludo-style board game module for Flutter.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  game_kit:
+    path: ../game_kit
+  shared_preferences: ^2.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
