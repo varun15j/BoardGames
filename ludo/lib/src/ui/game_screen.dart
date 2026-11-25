@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:game_kit/game_kit.dart';
 
 import '../game/models.dart';
@@ -18,7 +19,15 @@ class GameScreen extends StatefulWidget {
     required this.state,
     this.storage = const LudoStorage(),
     this.timing = const GameTiming(),
+    this.graphics,
+    this.tilt,
   });
+
+  /// Defaults to the app-wide settings.
+  final GraphicsSettings? graphics;
+
+  /// Defaults to the device gyroscope.
+  final TiltController? tilt;
 
   final GameState state;
   final LudoStorage storage;
@@ -34,6 +43,11 @@ class _GameScreenState extends State<GameScreen> {
   final Map<int, (String, int)> _reactions = {};
   int _reactionId = 0;
   bool _leaving = false;
+  late final GraphicsSettings _graphics = widget.graphics ?? GraphicsSettings.instance;
+  late final TiltController _tilt = widget.tilt ?? TiltController();
+  late final FrameMonitor _frames = FrameMonitor(settings: _graphics, onDowngrade: _announceDowngrade);
+  late final AppLifecycleListener _lifecycle;
+  bool _visible = true;
 
   @override
   void initState() {
@@ -54,18 +68,62 @@ class _GameScreenState extends State<GameScreen> {
       c.soundOn = s.sound;
       c.hapticsOn = s.haptics;
     });
+    _graphics.addListener(_applyGraphics);
+    _graphics.ensureLoaded();
+    _lifecycle = AppLifecycleListener(
+      onShow: () {
+        _visible = true;
+        _applyGraphics();
+      },
+      onHide: () {
+        _visible = false;
+        _applyGraphics();
+      },
+    );
     c.start();
+  }
+
+  /// Starts or stops everything that depends on the graphics quality, so a
+  /// change in the pause menu takes effect mid-match.
+  void _applyGraphics() {
+    if (!mounted) return;
+    final optimized = _graphics.optimized;
+    c.rollMs = optimized ? DieView.rollDuration.inMilliseconds + 100 : 950;
+    if (optimized && _graphics.tiltEffect && !c.reduceMotion && _visible) {
+      _tilt.start();
+    } else {
+      _tilt.stop();
+    }
+    optimized ? _frames.start() : _frames.stop();
+    setState(() {});
+  }
+
+  void _announceDowngrade() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Switched to Performance mode for smoother play')),
+    );
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     c.reduceMotion = MediaQuery.disableAnimationsOf(context);
+    // Applied after this frame: it may call setState.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyGraphics());
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _graphics.removeListener(_applyGraphics);
+    _lifecycle.dispose();
+    _frames.stop();
+    if (widget.tilt == null) {
+      _tilt.dispose();
+    } else {
+      _tilt.stop();
+    }
     c.dispose();
     super.dispose();
   }
@@ -87,6 +145,7 @@ class _GameScreenState extends State<GameScreen> {
       context: context,
       builder: (_) => PauseMenu(
         controller: c,
+        graphics: _graphics,
         onSettingsChanged: () => widget.storage.saveSettings(sound: c.soundOn, haptics: c.hapticsOn),
       ),
     );
@@ -143,7 +202,9 @@ class _GameScreenState extends State<GameScreen> {
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          child: Center(child: BoardView(controller: c)),
+                          child: Center(
+                            child: BoardView(controller: c, quality: _graphics.quality, tilt: _tilt),
+                          ),
                         ),
                       ),
                       _podRow([3, 2]),
@@ -256,6 +317,12 @@ class _GameScreenState extends State<GameScreen> {
                 enabled: c.humanToRoll && !c.paused,
                 onTap: c.rollTapped,
                 reduceMotion: c.reduceMotion,
+                quality: _graphics.quality,
+                tilt: _tilt,
+                throwHeight: MediaQuery.sizeOf(context).height * 0.30,
+                onBounce: () {
+                  if (c.hapticsOn) HapticFeedback.selectionClick();
+                },
               ),
               _roundButton(Icons.pause_circle_outline_rounded, 'Pause', _pause, size: 48),
             ],
@@ -286,7 +353,7 @@ class _GameScreenState extends State<GameScreen> {
           children: [
             Text('Pass to', style: KitTheme.body(size: 16, color: KitColors.muted)),
             const SizedBox(height: 14),
-            TokenDisc(color: style.color, shape: style.shape, size: 84),
+            PlayerToken(color: style.color, shape: style.shape, size: 84, quality: _graphics.quality),
             const SizedBox(height: 14),
             Text(s.name, textAlign: TextAlign.center, style: KitTheme.heading(size: 38, color: style.color)),
             const SizedBox(height: 28),

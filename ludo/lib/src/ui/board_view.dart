@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:game_kit/game_kit.dart';
 
@@ -10,8 +11,12 @@ import 'controller.dart';
 
 /// The playing board: painted tiles, tokens, landing ghosts and effects.
 class BoardView extends StatefulWidget {
-  const BoardView({super.key, required this.controller});
+  const BoardView({super.key, required this.controller, this.quality = GraphicsQuality.performance, this.tilt});
   final LudoController controller;
+  final GraphicsQuality quality;
+
+  /// Device tilt in -1..1; only used in optimized quality.
+  final ValueListenable<Offset>? tilt;
 
   @override
   State<BoardView> createState() => _BoardViewState();
@@ -30,6 +35,10 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
   int _fxId = 0;
 
   LudoController get c => widget.controller;
+  bool get _optimized => widget.quality == GraphicsQuality.optimized;
+
+  /// Largest board lean from phone movement (about 6 degrees).
+  static const double _maxLean = 0.105;
 
   @override
   void initState() {
@@ -66,7 +75,7 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
     switch (e) {
       case CaptureEvent(:final at, :final bySeat):
         final color = kCornerStyles[c.state.cornerOf(bySeat)].color;
-        _add((u, k) => _Burst(key: k, at: at, unit: u, color: color), ms: 800);
+        _add((u, k) => _Burst(key: k, at: at, unit: u, color: color, particles: _optimized ? 12 : 6), ms: 800);
         if (!c.reduceMotion) _shake.forward(from: 0);
       case SafeEvent(:final at):
         _add((u, k) => _Ripple(key: k, at: at, unit: u), ms: 800);
@@ -81,6 +90,25 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    final board = _board();
+    final tilt = widget.tilt;
+    if (!_optimized || tilt == null) return board;
+    // Only the transform changes with each sensor tick; the board is reused.
+    return ValueListenableBuilder<Offset>(
+      valueListenable: tilt,
+      child: board,
+      builder: (context, t, child) => Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          ..setEntry(3, 2, 0.001)
+          ..rotateX(t.dy * _maxLean)
+          ..rotateY(-t.dx * _maxLean),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _board() {
     return AspectRatio(
       aspectRatio: 1,
       child: AnimatedBuilder(
@@ -99,8 +127,12 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
               end: Alignment.bottomRight,
               colors: [Colors.white, Color(0xFFDCE6F7)],
             ),
-            boxShadow: const [
-              BoxShadow(color: Color(0x99000000), blurRadius: 30, offset: Offset(0, 14), spreadRadius: -12),
+            boxShadow: [
+              if (_optimized) ...const [
+                // A solid slab edge, then the soft shadow on the table.
+                BoxShadow(color: Color(0xFF9FB0D3), offset: Offset(0, 6)),
+                BoxShadow(color: Color(0xB3000000), blurRadius: 30, offset: Offset(0, 20), spreadRadius: -10),
+              ],
             ],
           ),
           child: LayoutBuilder(builder: (context, box) {
@@ -177,6 +209,8 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
           width: box,
           height: box,
           child: TokenView(
+            quality: widget.quality,
+            tilt: widget.tilt,
             color: style.color,
             shape: style.shape,
             size: tokenSize,
@@ -204,9 +238,14 @@ class TokenView extends StatefulWidget {
     required this.step,
     required this.movable,
     required this.reduceMotion,
+    this.quality = GraphicsQuality.performance,
+    this.tilt,
     this.onTap,
     this.semanticsLabel,
   });
+
+  final GraphicsQuality quality;
+  final ValueListenable<Offset>? tilt;
 
   final Color color;
   final PlayerShape shape;
@@ -268,6 +307,7 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
             animation: Listenable.merge([_hop, _pulse]),
             builder: (context, _) {
               final h = math.sin(_hop.value * math.pi);
+              final squash = _hop.value > 0.7 && _hop.value < 1 ? math.sin((_hop.value - 0.7) / 0.3 * math.pi) : 0.0;
               final bob = widget.movable ? -s * 0.14 * _pulse.value : 0.0;
               final ring = 0.8 + 0.28 * _pulse.value;
               return Stack(
@@ -288,9 +328,21 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
                     ),
                   Transform.translate(
                     offset: Offset(0, bob - s * 0.55 * h),
-                    child: Transform.scale(
-                      scale: 1 + 0.18 * h,
-                      child: TokenDisc(color: widget.color, shape: widget.shape, size: s),
+                    child: Transform(
+                      // Stretch in the air, squash as it lands.
+                      alignment: Alignment.bottomCenter,
+                      transform: Matrix4.diagonal3Values(
+                        1 + 0.14 * h + 0.12 * squash,
+                        1 + 0.22 * h - 0.14 * squash,
+                        1,
+                      ),
+                      child: PlayerToken(
+                        color: widget.color,
+                        shape: widget.shape,
+                        size: s,
+                        quality: widget.quality,
+                        tilt: widget.tilt,
+                      ),
                     ),
                   ),
                 ],
@@ -410,7 +462,8 @@ class _Ripple extends StatelessWidget {
 }
 
 class _Burst extends StatelessWidget {
-  const _Burst({super.key, required this.at, required this.unit, required this.color});
+  const _Burst({super.key, required this.at, required this.unit, required this.color, this.particles = 12});
+  final int particles;
   final BoardPoint at;
   final double unit;
   final Color color;
@@ -424,7 +477,7 @@ class _Burst extends StatelessWidget {
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0, end: 1),
           duration: const Duration(milliseconds: 600),
-          builder: (context, t, _) => CustomPaint(painter: _BurstPainter(t, color, unit)),
+          builder: (context, t, _) => CustomPaint(painter: _BurstPainter(t, color, unit, particles)),
         ),
       ),
     );
@@ -432,7 +485,8 @@ class _Burst extends StatelessWidget {
 }
 
 class _BurstPainter extends CustomPainter {
-  _BurstPainter(this.t, this.color, this.unit);
+  _BurstPainter(this.t, this.color, this.unit, this.particles);
+  final int particles;
   final double t;
   final Color color;
   final double unit;
@@ -440,8 +494,8 @@ class _BurstPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = color.withValues(alpha: 1 - t);
-    for (var i = 0; i < 12; i++) {
-      final a = i / 12 * math.pi * 2;
+    for (var i = 0; i < particles; i++) {
+      final a = i / particles * math.pi * 2;
       final r = unit * (0.4 + (i.isEven ? 1.6 : 1.1) * Curves.easeOut.transform(t));
       canvas.drawCircle(Offset(math.cos(a) * r, math.sin(a) * r), unit * 0.17 * (1 - t * 0.8), paint);
     }

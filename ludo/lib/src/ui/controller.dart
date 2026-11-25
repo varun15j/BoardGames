@@ -91,6 +91,9 @@ class LudoController extends ChangeNotifier {
   bool hapticsOn;
   bool reduceMotion;
 
+  /// How long the die takes to show its result; the 3D throw is longer.
+  int rollMs = 950;
+
   /// Token steps as currently drawn (they lag behind [state] while hopping).
   final List<List<int>> display;
   final List<String> notes;
@@ -194,7 +197,7 @@ class LudoController extends ChangeNotifier {
     notes[state.turn] = 'Rolling';
     _feedback(heavy: false);
     notifyListeners();
-    await _wait(reduceMotion ? 120 : 950);
+    await _wait(reduceMotion ? 1000 : rollMs);
     if (g != _gen) return;
     final roll = dieValue;
     notes[state.turn] = 'Rolled $roll';
