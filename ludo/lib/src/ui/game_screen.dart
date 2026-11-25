@@ -302,10 +302,22 @@ class _GameScreenState extends State<GameScreen> {
     final style = kCornerStyles[c.currentSeat.corner];
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 6, 18, 14),
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          // The status has its own row so it never covers the player cards.
+          Container(
+            key: const ValueKey('status'),
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(999)),
+            child: Text(
+              c.status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: KitTheme.body(size: 12, weight: FontWeight.w800, color: Colors.white),
+            ),
+          ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -326,14 +338,6 @@ class _GameScreenState extends State<GameScreen> {
               ),
               _roundButton(Icons.pause_circle_outline_rounded, 'Pause', _pause, size: 48),
             ],
-          ),
-          Positioned(
-            top: -30,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(999)),
-              child: Text(c.status, style: KitTheme.body(size: 12, weight: FontWeight.w800, color: Colors.white)),
-            ),
           ),
         ],
       ),

@@ -3,39 +3,42 @@ import 'theme.dart';
 
 /// Paints a white shape mark centred at [c] inside a box of side [size].
 void paintShapeMark(Canvas canvas, Offset c, double size, PlayerShape shape, [double opacity = 0.92]) {
-  final p = Paint()..color = Colors.white.withValues(alpha: opacity);
   final h = size / 2;
+  final path = Path();
   switch (shape) {
     case PlayerShape.circle:
-      canvas.drawCircle(c, h, p);
+      path.addOval(Rect.fromCircle(center: c, radius: h));
     case PlayerShape.square:
-      canvas.drawRRect(
+      path.addRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(center: c, width: size * 0.9, height: size * 0.9),
           Radius.circular(size * 0.12),
         ),
-        p,
       );
     case PlayerShape.triangle:
-      canvas.drawPath(
-        Path()
-          ..moveTo(c.dx, c.dy - h)
-          ..lineTo(c.dx + h, c.dy + h * 0.8)
-          ..lineTo(c.dx - h, c.dy + h * 0.8)
-          ..close(),
-        p,
-      );
+      path
+        ..moveTo(c.dx, c.dy - h)
+        ..lineTo(c.dx + h, c.dy + h * 0.8)
+        ..lineTo(c.dx - h, c.dy + h * 0.8)
+        ..close();
     case PlayerShape.diamond:
-      canvas.drawPath(
-        Path()
-          ..moveTo(c.dx, c.dy - h)
-          ..lineTo(c.dx + h, c.dy)
-          ..lineTo(c.dx, c.dy + h)
-          ..lineTo(c.dx - h, c.dy)
-          ..close(),
-        p,
-      );
+      path
+        ..moveTo(c.dx, c.dy - h)
+        ..lineTo(c.dx + h, c.dy)
+        ..lineTo(c.dx, c.dy + h)
+        ..lineTo(c.dx - h, c.dy)
+        ..close();
   }
+  // The dark edge keeps the white mark readable on light colours like amber.
+  canvas.drawPath(
+    path,
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size * 0.22
+      ..strokeJoin = StrokeJoin.round
+      ..color = KitColors.inkDark.withValues(alpha: 0.85),
+  );
+  canvas.drawPath(path, Paint()..color = Colors.white.withValues(alpha: opacity));
 }
 
 /// A glossy disc with a white shape mark - the game token.
@@ -75,6 +78,14 @@ class TokenDiscPainter extends CustomPainter {
           stops: const [0, 0.55, 1],
         ).createShader(body),
     );
+    canvas.drawCircle(
+      body.center,
+      body.width / 2,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.07
+        ..color = Color.lerp(color, KitColors.inkDark, 0.75)!,
+    );
     paintShapeMark(canvas, body.center, s * 0.4, shape);
   }
 
@@ -103,7 +114,15 @@ class InitialDisc extends StatelessWidget {
           stops: const [0, 0.6],
         ),
       ),
-      child: Text(letter, style: KitTheme.heading(size: size * 0.42, color: Colors.white)),
+      child: Text(
+        letter,
+        style: KitTheme.heading(size: size * 0.46, color: Colors.white).copyWith(
+          shadows: const [
+            Shadow(color: KitColors.inkDark, blurRadius: 3),
+            Shadow(color: KitColors.inkDark, blurRadius: 3),
+          ],
+        ),
+      ),
     );
   }
 }

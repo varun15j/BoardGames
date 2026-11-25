@@ -61,7 +61,7 @@ class PawnPainter extends CustomPainter {
     final lean = Offset(t.dx * s * 0.12, t.dy * s * 0.09);
     final head = foot + Offset(0, -s * 0.70) + lean;
     final headRadius = s * 0.34;
-    final dark = Color.lerp(color, Colors.black, 0.5)!;
+    final dark = Color.lerp(color, KitColors.inkDark, 0.72)!;
     final light = Color.lerp(color, Colors.white, 0.55)!;
 
     // Cast shadow, opposite to the tilt, plus a tight contact shadow.
@@ -94,7 +94,7 @@ class PawnPainter extends CustomPainter {
       ..close();
     final outline = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(1, s * 0.07)
+      ..strokeWidth = math.max(1.5, s * 0.11)
       ..strokeJoin = StrokeJoin.round
       ..color = dark;
     canvas.drawPath(body, outline);

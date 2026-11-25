@@ -15,14 +15,17 @@ class KitColors {
   static const line = Color(0xFF2C3D62);
   static const tile = Color(0xFFFAFCFF);
   static const tileEdge = Color(0xFFD7E1F2);
-  static const coral = Color(0xFFFF6B57);
-  static const teal = Color(0xFF16B8A6);
-  static const amber = Color(0xFFFFB429);
-  static const violet = Color(0xFF7C6CF7);
+  static const coral = Color(0xFFF23D2C);
+  static const teal = Color(0xFF00A08C);
+  static const amber = Color(0xFFFFAD00);
+  static const violet = Color(0xFF5B3FF0);
   static const gold = Color(0xFFFFD25A);
   static const goldDeep = Color(0xFFC99A1C);
   static const goldInk = Color(0xFF3A2A00);
   static const danger = Color(0xFFFF3B3B);
+
+  /// Near-black used for pips, outlines and mark edges.
+  static const inkDark = Color(0xFF0B0F1A);
 }
 
 /// A player colour together with its mark.

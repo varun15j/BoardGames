@@ -33,6 +33,7 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
   final List<_Fx> _fx = [];
   StreamSubscription<LudoEvent>? _sub;
   int _fxId = 0;
+  final GlobalKey<FootprintLayerState> _footprints = GlobalKey();
 
   LudoController get c => widget.controller;
   bool get _optimized => widget.quality == GraphicsQuality.optimized;
@@ -83,6 +84,16 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
         _add((u, k) => _Ripple(key: k, at: const BoardPoint(7.5, 7.5), unit: u), ms: 800);
       case BannerEvent(:final text, :final color):
         _add((u, k) => _Banner(key: k, text: text, color: color, reduce: c.reduceMotion), ms: 1200);
+      case StepEvent(:final seat, :final from, :final to, :final number, :final last):
+        // With reduced motion only the final square is marked.
+        if (c.reduceMotion && !last) return;
+        final color = kCornerStyles[c.state.cornerOf(seat)].color;
+        _footprints.currentState?.step(
+          landing: Offset(to.col, to.row),
+          direction: Offset(to.col - from.col, to.row - from.row),
+          stepNumber: number,
+          color: Color.lerp(color, KitColors.inkDark, 0.35)!,
+        );
       case ReactionEvent():
         break;
     }
@@ -147,6 +158,10 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
                   clipBehavior: Clip.none,
                   children: [
                     Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: BoardPainter()))),
+                    // Prints sit under the pieces.
+                    Positioned.fill(
+                      child: FootprintLayer(key: _footprints, unit: u, quality: widget.quality),
+                    ),
                     for (final g in c.ghosts) _ghost(g, u),
                     ..._tokens(u),
                     for (final fx in _fx) fx.builder(u, fx.key),
@@ -202,8 +217,8 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
         isMovable ? 3 : (fly ? 2 : (home ? 0 : 1)),
         AnimatedPositioned(
           key: ValueKey('token-${e.seat}-${e.token}'),
-          duration: Duration(milliseconds: c.reduceMotion ? 40 : (fly ? 550 : 150)),
-          curve: fly ? Curves.easeInBack : Curves.easeOut,
+          duration: Duration(milliseconds: c.reduceMotion ? 40 : (fly ? 550 : LudoController.stepMs - 20)),
+          curve: fly ? Curves.easeInBack : Curves.easeInOut,
           left: (e.p.col + dx) * u - box / 2,
           top: (e.p.row + dy) * u - box / 2,
           width: box,
@@ -261,7 +276,7 @@ class TokenView extends StatefulWidget {
 }
 
 class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
-  late final AnimationController _hop = AnimationController(vsync: this, duration: const Duration(milliseconds: 160));
+  late final AnimationController _hop = AnimationController(vsync: this, duration: const Duration(milliseconds: LudoController.stepMs));
   late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
 
   @override
@@ -309,25 +324,14 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
               final h = math.sin(_hop.value * math.pi);
               final squash = _hop.value > 0.7 && _hop.value < 1 ? math.sin((_hop.value - 0.7) / 0.3 * math.pi) : 0.0;
               final bob = widget.movable ? -s * 0.14 * _pulse.value : 0.0;
-              final ring = 0.8 + 0.28 * _pulse.value;
               return Stack(
                 alignment: Alignment.center,
                 clipBehavior: Clip.none,
                 children: [
                   if (widget.movable)
-                    Opacity(
-                      opacity: widget.reduceMotion ? 0.9 : 0.9 - 0.55 * _pulse.value,
-                      child: Container(
-                        width: s * 1.9 * ring,
-                        height: s * 1.9 * ring,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: KitColors.gold, width: 3),
-                        ),
-                      ),
-                    ),
+                    MoveRing(size: s * 1.8, quality: widget.quality, reduceMotion: widget.reduceMotion),
                   Transform.translate(
-                    offset: Offset(0, bob - s * 0.55 * h),
+                    offset: Offset(0, bob - s * 0.85 * h),
                     child: Transform(
                       // Stretch in the air, squash as it lands.
                       alignment: Alignment.bottomCenter,
@@ -548,6 +552,9 @@ class _Banner extends StatelessWidget {
 
 /// Paints the static board: bases, loop tiles, stars, home lanes, centre.
 class BoardPainter extends CustomPainter {
+  static const tileOutline = Color(0xFF6B7896);
+  static const starColor = Color(0xFF27324F);
+
   @override
   void paint(Canvas canvas, Size size) {
     final u = size.width / Board.size;
@@ -563,11 +570,11 @@ class BoardPainter extends CustomPainter {
       final inner = outer.deflate(u * 0.8);
       canvas.drawRRect(
         RRect.fromRectAndRadius(inner, Radius.circular(u * 0.7)),
-        Paint()..color = Colors.white.withValues(alpha: 0.92),
+        Paint()..color = Colors.white,
       );
       for (final s in Board.sockets) {
         final c = Offset((o[1] + s[1]) * u, (o[0] + s[0]) * u);
-        canvas.drawCircle(c, u * 0.55, Paint()..color = color.withValues(alpha: 0.22));
+        canvas.drawCircle(c, u * 0.55, Paint()..color = color.withValues(alpha: 0.45));
         canvas.drawCircle(
           c,
           u * 0.55,
@@ -584,14 +591,21 @@ class BoardPainter extends CustomPainter {
       for (final rc in Board.lanes[p]) {
         canvas.drawRRect(
           RRect.fromRectAndRadius(cell(rc[0], rc[1]), Radius.circular(u * 0.2)),
-          Paint()..color = kCornerStyles[p].color.withValues(alpha: 0.82),
+          Paint()..color = kCornerStyles[p].color,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(cell(rc[0], rc[1]), Radius.circular(u * 0.2)),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = tileOutline,
         );
       }
     }
     final edge = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = const Color(0xFFD3DDEE);
+      ..strokeWidth = 1.2
+      ..color = tileOutline;
     for (var i = 0; i < Board.loop.length; i++) {
       final rc = Board.loop[i];
       final rr = RRect.fromRectAndRadius(cell(rc[0], rc[1]), Radius.circular(u * 0.2));
@@ -599,7 +613,10 @@ class BoardPainter extends CustomPainter {
       canvas.drawRRect(rr, Paint()..color = startOf >= 0 ? kCornerStyles[startOf].color : Colors.white);
       canvas.drawRRect(rr, edge);
       if (Board.isSafeLoopIndex(i)) {
-        _star(canvas, Offset(rc[1] * u + u / 2, rc[0] * u + u / 2), u * 0.31, startOf >= 0 ? Colors.white : const Color(0xFFC9D4E8));
+        final centre = Offset(rc[1] * u + u / 2, rc[0] * u + u / 2);
+        // White with a dark edge on start squares, solid dark elsewhere.
+        if (startOf >= 0) _star(canvas, centre, u * 0.42, KitColors.inkDark);
+        _star(canvas, centre, u * (startOf >= 0 ? 0.31 : 0.38), startOf >= 0 ? Colors.white : starColor);
       }
     }
 
