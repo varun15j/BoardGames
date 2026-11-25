@@ -27,6 +27,7 @@ class ResultScreen extends StatelessWidget {
       body: ResultView(
         title: title,
         reduceMotion: MediaQuery.disableAnimationsOf(context),
+        confettiCount: GraphicsSettings.instance.optimized ? 140 : 50,
         rows: [
           for (var i = 0; i < order.length; i++)
             ResultRowData(

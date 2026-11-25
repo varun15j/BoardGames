@@ -24,7 +24,10 @@ class ResultView extends StatefulWidget {
     this.confettiColors = const [KitColors.coral, KitColors.teal, KitColors.amber, KitColors.violet],
     this.reduceMotion = false,
     this.footer,
+    this.confettiCount = 140,
   });
+
+  final int confettiCount;
 
   final String title;
   final List<ResultRowData> rows;
@@ -80,7 +83,7 @@ class _ResultViewState extends State<ResultView> with SingleTickerProviderStateM
               ),
             ),
           ),
-          if (!widget.reduceMotion) ConfettiOverlay(colors: widget.confettiColors),
+          if (!widget.reduceMotion) ConfettiOverlay(colors: widget.confettiColors, count: widget.confettiCount),
         ],
       ),
     );

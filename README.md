@@ -46,6 +46,16 @@ Debug APK: `cd app; flutter build apk --debug`.
 
 Unfinished games are saved with `shared_preferences` (Save & exit, and after every turn) and offered as "Resume game" on the Ludo home screen.
 
+## Graphics modes
+
+| Mode | What you get |
+| --- | --- |
+| Auto (default) | Optimized if the phone has about 6 GB RAM or more (at least 5500 MB reported), Android 10+ and is not a low-RAM device; otherwise Performance. Unknown hardware means Performance. |
+| Performance | Flat 2D board, disc pieces, simple die tumble, no gyroscope, lighter effects. |
+| Optimized | 3D die that pops up and bounces, 3D pawns, moving shadows, and a board that leans up to 6 degrees with the gyroscope ("Tilt effect" switch). |
+
+Pick one in the pause menu; it applies immediately. In release and profile builds, Auto drops to Performance for good if frames average over 20 ms (debug builds only log `[frames]` lines). The pieces live in `game_kit`: `GraphicsSettings`, `GraphicsSelector`, `DieView`, `PlayerToken`, `TiltController`, `FrameMonitor`.
+
 ## Using the Ludo module from another app
 
 ```yaml
@@ -74,4 +84,5 @@ Wrap the app in `KitTheme.data()` (from `game_kit`) so fonts and colours match; 
 
 - Fonts (Baloo 2, Nunito) are fetched by `google_fonts` the first time the app runs online and cached; offline on the very first launch the system font is used. Android release builds need the `INTERNET` permission for that, which is declared.
 - Sound uses the system click, and haptics use the platform haptic feedback; both can be switched off from the pause menu. "Reduce motion" (system setting) shortens animations and removes the shake and confetti.
+- "Reduce motion" also turns off the tilt effect.
 - Not in the MVP: online play, accounts, custom sound effects, tablet layouts.

@@ -22,6 +22,7 @@ class _LudoHomeScreenState extends State<LudoHomeScreen> {
   @override
   void initState() {
     super.initState();
+    GraphicsSettings.instance.ensureLoaded();
     _refresh();
   }
 

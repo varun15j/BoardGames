@@ -8,8 +8,9 @@ enum PauseChoice { resume, saveAndExit, leave }
 
 /// Pause dialog: resume, sound and haptics, rules, save and exit, leave.
 class PauseMenu extends StatefulWidget {
-  const PauseMenu({super.key, required this.controller, required this.onSettingsChanged});
+  const PauseMenu({super.key, required this.controller, required this.onSettingsChanged, required this.graphics});
   final LudoController controller;
+  final GraphicsSettings graphics;
   final VoidCallback onSettingsChanged;
 
   @override
@@ -25,7 +26,7 @@ class _PauseMenuState extends State<PauseMenu> {
       backgroundColor: KitColors.panel,
       insetPadding: const EdgeInsets.all(24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -44,6 +45,8 @@ class _PauseMenuState extends State<PauseMenu> {
                   c.hapticsOn = v;
                   widget.onSettingsChanged();
                 })),
+            const SizedBox(height: 12),
+            GraphicsSelector(settings: widget.graphics),
             const SizedBox(height: 12),
             SoftButton(
               label: 'How to play',
