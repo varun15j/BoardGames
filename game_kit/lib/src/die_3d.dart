@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'theme.dart';
+
 /// A point or direction in 3D. x is right, y is down, z is toward the viewer.
 class Vec3 {
   const Vec3(this.x, this.y, this.z);
@@ -73,7 +75,7 @@ class DieGeometry {
   /// The slight three-quarter view the resting die is seen from, so two side
   /// faces show and it reads as a solid cube.
   static final Rot3 viewTilt =
-      Rot3.axis(const Vec3(1, 0, 0), 0.36).after(Rot3.axis(const Vec3(0, 1, 0), -0.36));
+      Rot3.axis(const Vec3(1, 0, 0), 0.28).after(Rot3.axis(const Vec3(0, 1, 0), -0.28));
 
   /// Orientation at [spin] progress (0 = start of the throw, 1 = settled).
   static Rot3 orientation(int value, double spin, int seed) {
@@ -181,38 +183,34 @@ class Die3DPainter extends CustomPainter {
     final visible = faces.where((f) => f.n.dot(Vec3(0, 0, _camera) - f.n) > 0).toList()
       ..sort((a, b) => a.n.z.compareTo(b.n.z));
 
-    // Rounded edges: a thick round-joined outline under the faces fills the
-    // bevel between them.
-    for (final f in visible) {
-      final shade = 0.5 + 0.5 * math.max(0, f.n.dot(lightDir));
-      final edge = _roundedFace(f.n, f.u, f.v, project, 1.0, 0.22);
-      canvas.drawPath(
-        edge,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = half * 0.2
-          ..strokeJoin = StrokeJoin.round
-          ..color = Color.lerp(const Color(0xFF8C9BC0), const Color(0xFFEFF3FB), shade)!,
-      );
+    // A thick dark outline first, then a light bevel that fills the rounded
+    // edges between the faces.
+    final outline = [for (final f in visible) _roundedFace(f.n, f.u, f.v, project, 1.0, 0.22)];
+    Paint stroke(double width, Color color) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..strokeJoin = StrokeJoin.round
+      ..color = color;
+    for (final edge in outline) {
+      canvas.drawPath(edge, stroke(half * 0.34, KitColors.inkDark));
+    }
+    for (final edge in outline) {
+      canvas.drawPath(edge, stroke(half * 0.17, const Color(0xFFD5DCEB)));
+      canvas.drawPath(edge, Paint()..color = const Color(0xFFD5DCEB));
     }
     for (final f in visible) {
-      final shade = math.max(0.0, f.n.dot(lightDir));
       final path = _roundedFace(f.n, f.u, f.v, project, 0.97, 0.3);
-      final bounds = path.getBounds();
-      canvas.drawPath(
-        path,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment(light.dx.clamp(-1.0, 1.0), light.dy.clamp(-1.0, 1.0)),
-            end: Alignment((-light.dx).clamp(-1.0, 1.0), (-light.dy).clamp(-1.0, 1.0)),
-            colors: [
-              Color.lerp(const Color(0xFFB4C0DC), Colors.white, 0.25 + 0.75 * shade)!,
-              Color.lerp(const Color(0xFF9AA8CA), const Color(0xFFF0F4FC), shade)!,
-            ],
-          ).createShader(bounds),
-      );
+      canvas.drawPath(path, Paint()..color = dieFaceColor(f.n, lightDir));
       _paintPips(canvas, f.value, f.n, f.u, f.v, project);
     }
+  }
+
+  /// The face turned to the viewer is pure white; sides are shaded just
+  /// enough to read as a solid cube.
+  static Color dieFaceColor(Vec3 normal, Vec3 light) {
+    if (normal.z > 0.8) return Colors.white;
+    final shade = math.max(0.0, normal.dot(light));
+    return Color.lerp(const Color(0xFFC3CCE0), const Color(0xFFF1F4FA), shade)!;
   }
 
   Path _roundedFace(Vec3 n, Vec3 u, Vec3 v, Offset Function(Vec3) project, double extent, double radius) {
@@ -235,8 +233,7 @@ class Die3DPainter extends CustomPainter {
   }
 
   void _paintPips(Canvas canvas, int value, Vec3 n, Vec3 u, Vec3 v, Offset Function(Vec3) project) {
-    final one = value == 1;
-    final radius = one ? 0.24 : 0.17;
+    final radius = value == 1 ? 0.28 : 0.2;
     for (final i in _pips[value]!) {
       final c = n * 1.001 + u * ((i % 3 - 1) * 0.52) + v * ((i ~/ 3 - 1) * 0.52);
       Path disc(double r) {
@@ -247,11 +244,7 @@ class Die3DPainter extends CustomPainter {
         return Path()..addPolygon(points, true);
       }
 
-      canvas.drawPath(disc(radius), Paint()..color = one ? accent : const Color(0xFF1B2440));
-      canvas.drawPath(
-        disc(radius * 0.45),
-        Paint()..color = Colors.white.withValues(alpha: 0.18),
-      );
+      canvas.drawPath(disc(radius), Paint()..color = KitColors.inkDark);
     }
   }
 

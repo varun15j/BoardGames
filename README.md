@@ -56,6 +56,8 @@ Unfinished games are saved with `shared_preferences` (Save & exit, and after eve
 
 Pick one in the pause menu; it applies immediately. In release and profile builds, Auto drops to Performance for good if frames average over 20 ms (debug builds only log `[frames]` lines). The pieces live in `game_kit`: `GraphicsSettings`, `GraphicsSelector`, `DieView`, `PlayerToken`, `TiltController`, `FrameMonitor`.
 
+Pieces that can move are circled by a turning ring (`MoveRing`), and a walking piece leaves alternating footprints that fade (`FootprintLayer`; plain dots in Performance mode).
+
 ## Using the Ludo module from another app
 
 ```yaml

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'die_3d.dart';
 import 'graphics.dart';
+import 'theme.dart';
 
 /// A tappable 3D die. Whenever [rollId] changes it pops up toward the viewer,
 /// is thrown [throwHeight] pixels up the screen, tumbles, bounces and settles
@@ -159,7 +160,7 @@ class DieViewState extends State<DieView> with TickerProviderStateMixin {
       ),
       child: Transform.rotate(
         angle: spin,
-        child: CustomPaint(size: Size.square(size * 0.6), painter: DiePainter(shownFace, widget.color)),
+        child: CustomPaint(size: Size.square(size * 0.7), painter: DiePainter(shownFace, widget.color)),
       ),
     );
   }
@@ -235,6 +236,9 @@ class DiePainter extends CustomPainter {
   final int value;
   final Color accent;
 
+  static const faceColor = Colors.white;
+  static const pipColor = KitColors.inkDark;
+
   static const _pips = {
     1: [4],
     2: [0, 8],
@@ -247,19 +251,19 @@ class DiePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rr = RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(size.width * 0.22));
-    canvas.drawRRect(rr, Paint()..color = const Color(0xFFF4F7FD));
+    canvas.drawRRect(rr, Paint()..color = faceColor);
     canvas.drawRRect(
       rr,
       Paint()
         ..style = PaintingStyle.stroke
-        ..color = const Color(0xFFCCD6E8),
+        ..strokeWidth = size.width * 0.07
+        ..color = pipColor,
     );
-    final pad = size.width * 0.2;
+    final pad = size.width * 0.23;
     final step = (size.width - pad * 2) / 2;
     for (final i in _pips[value.clamp(1, 6)]!) {
       final c = Offset(pad + (i % 3) * step, pad + (i ~/ 3) * step);
-      final one = value == 1;
-      canvas.drawCircle(c, size.width * (one ? 0.11 : 0.085), Paint()..color = one ? accent : const Color(0xFF1B2440));
+      canvas.drawCircle(c, size.width * (value == 1 ? 0.15 : 0.11), Paint()..color = pipColor);
     }
   }
 

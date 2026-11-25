@@ -48,6 +48,18 @@ class BannerEvent extends LudoEvent {
   final Color color;
 }
 
+/// A token landed on a square while walking.
+class StepEvent extends LudoEvent {
+  const StepEvent({required this.seat, required this.from, required this.to, required this.number, required this.last});
+  final int seat;
+  final BoardPoint from;
+  final BoardPoint to;
+
+  /// 1 for the first square of the move, then 2, 3...
+  final int number;
+  final bool last;
+}
+
 class ReactionEvent extends LudoEvent {
   const ReactionEvent(this.seat, this.emoji);
   final int seat;
@@ -90,6 +102,9 @@ class LudoController extends ChangeNotifier {
   bool soundOn;
   bool hapticsOn;
   bool reduceMotion;
+
+  /// Time for one hop from a square to the next.
+  static const stepMs = 180;
 
   /// How long the die takes to show its result; the 3D throw is longer.
   int rollMs = 950;
@@ -285,9 +300,18 @@ class LudoController extends ChangeNotifier {
     } else {
       for (var k = res.from + 1; k <= res.to; k++) {
         if (g != _gen) return;
+        final before = _pointFor(seat, token, k - 1);
         display[seat][token] = k;
         notifyListeners();
-        await _wait(165);
+        await _wait(stepMs);
+        if (g != _gen) return;
+        _emit(StepEvent(
+          seat: seat,
+          from: before,
+          to: _pointFor(seat, token, k),
+          number: k - res.from,
+          last: k == res.to,
+        ));
       }
     }
     if (g != _gen) return;
