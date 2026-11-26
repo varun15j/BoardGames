@@ -25,7 +25,18 @@ class GameScreen extends StatefulWidget {
     this.graphics,
     this.tilt,
     this.view3d,
+    this.controller,
+    this.ended,
+    this.onLeave,
   });
+
+  /// A Wi-Fi match: the host's controller, or a player's mirror of it. It is
+  /// not saved, and [onLeave] closes it.
+  final LudoController? controller;
+
+  /// Set to a reason when the host is gone.
+  final ValueListenable<String?>? ended;
+  final VoidCallback? onLeave;
 
   /// Forces the 2D or 3D board; null uses the remembered choice.
   final bool? view3d;
@@ -72,12 +83,17 @@ class _GameScreenState extends State<GameScreen> {
   @override
   void initState() {
     super.initState();
-    c = LudoController(
-      state: widget.state,
-      timing: widget.timing,
-      onSave: (s) => widget.storage.save(s),
-      onGameOver: _gameOver,
-    );
+    c = widget.controller ??
+        LudoController(
+          state: widget.state,
+          timing: widget.timing,
+          onSave: (s) => widget.storage.save(s),
+          onGameOver: _gameOver,
+        );
+    if (_networked) {
+      c.addListener(_watchEnd);
+      widget.ended?.addListener(_hostGone);
+    }
     _sub = c.events.listen((e) {
       if (e is ReactionEvent && mounted) {
         setState(() => _reactions[e.seat] = (e.emoji, ++_reactionId));
@@ -108,7 +124,33 @@ class _GameScreenState extends State<GameScreen> {
         _applyGraphics();
       },
     );
-    c.start();
+    // A Wi-Fi match is already running (or runs on the host).
+    if (!_networked) c.start();
+  }
+
+  bool get _networked => widget.controller != null;
+
+  void _watchEnd() {
+    if (c.phase == TurnPhase.over && !_leaving) {
+      c.removeListener(_watchEnd);
+      _gameOver();
+    }
+  }
+
+  Future<void> _hostGone() async {
+    final reason = widget.ended?.value;
+    if (reason == null || !mounted || _leaving || c.phase == TurnPhase.over) return;
+    _leaving = true;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: KitColors.panel,
+        title: Text('Game over', style: KitTheme.heading(size: 22)),
+        content: Text(reason, style: KitTheme.body(color: KitColors.muted)),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+      ),
+    );
+    if (mounted) LudoGame.popToHome(context);
   }
 
   /// Starts or stops everything that depends on the graphics quality, so a
@@ -148,22 +190,30 @@ class _GameScreenState extends State<GameScreen> {
     _graphics.removeListener(_applyGraphics);
     _lifecycle.dispose();
     _frames.stop();
+    c.removeListener(_watchEnd);
+    widget.ended?.removeListener(_hostGone);
     if (widget.tilt == null) {
       _tilt.dispose();
     } else {
       _tilt.stop();
     }
-    c.dispose();
+    if (_networked) {
+      widget.onLeave?.call(); // closes the room, which owns the controller
+    } else {
+      c.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _gameOver() async {
-    await widget.storage.clearSave();
+    if (!_networked) await widget.storage.clearSave();
     await Future<void>.delayed(widget.timing.ms(1000));
     if (!mounted || _leaving) return;
     _leaving = true;
     await Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => ResultScreen(state: c.state, storage: widget.storage)),
+      MaterialPageRoute<void>(
+        builder: (_) => ResultScreen(state: c.state.clone(), storage: widget.storage, networked: _networked),
+      ),
     );
   }
 
@@ -177,6 +227,7 @@ class _GameScreenState extends State<GameScreen> {
         graphics: _graphics,
         view3d: _view3d,
         onViewChanged: _setView,
+        networked: _networked,
         onSettingsChanged: () => widget.storage.saveSettings(sound: c.soundOn, haptics: c.hapticsOn),
       ),
     );
@@ -186,7 +237,7 @@ class _GameScreenState extends State<GameScreen> {
         await widget.storage.save(c.state);
         _exit();
       case PauseChoice.leave:
-        await widget.storage.clearSave();
+        if (!_networked) await widget.storage.clearSave();
         _exit();
       case PauseChoice.resume || null:
         c.resume();
@@ -201,8 +252,8 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _react() async {
     final seat = c.state.turn;
-    // Reactions come from the first human seat (or whoever holds the device).
-    final from = !c.config.seats[seat].isBot ? seat : c.config.seats.indexWhere((s) => !s.isBot);
+    // Reactions come from this phone's seat, or whoever holds the device.
+    final from = c.localSeats?.first ?? (!c.config.seats[seat].isBot ? seat : c.config.seats.indexWhere((s) => !s.isBot));
     final emoji = await showReactionsSheet(context);
     if (emoji != null && mounted) c.react(from < 0 ? 0 : from, emoji);
   }
@@ -385,7 +436,7 @@ class _GameScreenState extends State<GameScreen> {
                 value: c.dieValue,
                 rollId: c.rollId,
                 color: style.color,
-                enabled: c.humanToRoll && !c.paused,
+                enabled: c.canRollHere && !c.paused,
                 onTap: c.rollTapped,
                 reduceMotion: c.reduceMotion,
                 // In 3D the die is thrown on the board, not in the dock.

@@ -368,6 +368,7 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
       final dx = spot.dx;
       // Stand the creature's feet a little below the middle of the square.
       final dy = spot.dy - 0.1;
+      // Everyone sees the ring; only the phone whose turn it is can tap.
       final isMovable = e.seat == c.state.turn && c.movable.contains(e.token) && c.humanToPick;
       final fly = c.flying.contains(TokenRef(e.seat, e.token));
       final box = u * 1.9;
@@ -417,7 +418,7 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
                 movable: p.movable,
                 reduceMotion: c.reduceMotion,
                 semanticsLabel: '${c.config.seats[p.seat].name} token ${p.token + 1}',
-                onTap: p.movable ? () => c.selectToken(p.token) : null,
+                onTap: p.movable && c.canPickHere ? () => c.selectToken(p.token) : null,
               ),
             ),
           );

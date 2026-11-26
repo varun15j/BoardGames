@@ -10,7 +10,10 @@ import 'storage.dart';
 
 /// Ranks, captures and sixes, with Rematch / New match / Home.
 class ResultScreen extends StatelessWidget {
-  const ResultScreen({super.key, required this.state, this.storage = const LudoStorage()});
+  const ResultScreen({super.key, required this.state, this.storage = const LudoStorage(), this.networked = false});
+
+  /// After a Wi-Fi match the room is gone, so only Home is offered.
+  final bool networked;
   final GameState state;
   final LudoStorage storage;
 
@@ -38,7 +41,7 @@ class ResultScreen extends StatelessWidget {
             ),
         ],
         actions: [
-          GoldButton(
+          if (!networked) GoldButton(
             label: 'Rematch',
             icon: Icons.replay_rounded,
             onPressed: () => Navigator.of(context).pushReplacement(
@@ -47,7 +50,7 @@ class ResultScreen extends StatelessWidget {
               ),
             ),
           ),
-          SoftButton(
+          if (!networked) SoftButton(
             label: 'New match',
             icon: Icons.tune_rounded,
             onPressed: () {

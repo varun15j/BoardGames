@@ -9,6 +9,7 @@ import 'how_to_play.dart';
 import 'seat_avatar.dart';
 import 'setup_screen.dart';
 import 'storage.dart';
+import 'wifi_screens.dart';
 
 /// Race Board home: vs Bots, Pass & Play, Quick Match, How to play.
 class LudoHomeScreen extends StatefulWidget {
@@ -116,6 +117,8 @@ class _LudoHomeScreenState extends State<LudoHomeScreen> {
                     _menuButton('Pass & Play', Icons.people_alt_rounded, () => _open(SetupScreen(mode: SetupMode.passAndPlay, storage: widget.storage))),
                     const SizedBox(height: 12),
                     _menuButton('Quick Match', Icons.bolt_rounded, _quick),
+                    const SizedBox(height: 12),
+                    _menuButton('Play on Wi-Fi', Icons.wifi_rounded, () => _open(const WifiScreen())),
                     const SizedBox(height: 12),
                     SoftButton(label: 'How to play', icon: Icons.help_outline_rounded, onPressed: () => _open(const HowToPlayScreen())),
                     if (Navigator.of(context).canPop()) ...[

@@ -83,6 +83,12 @@ The gold **3D**/**2D** button on the game screen (also in the pause menu) switch
 
 Cat, frog and owl have their own models and movements (four-legged trot with a swinging tail; crouch and leap; wing-flapping flight). Every other avatar uses a simple mascot with its picture as the face, moving in the style listed by `gaitFor`. With Performance graphics the 3D view uses fewer triangles, no shadows and no tilt.
 
+## Same-Wi-Fi play
+
+**Play on Wi-Fi** on the Race Board home screen lets 2 to 4 phones share a match with no internet or server. One phone hosts and shows a 4-character room code; the others join with it (Android network service discovery), or type the address the host shows. All phones must be on the same Wi-Fi or one phone's hotspot; guest and public Wi-Fi that isolates devices will not work.
+
+Only the host runs the rules. Players send intents (roll, pick, react, leave) and the host checks them against the current turn, then sends the state to everyone. The turn timer runs on the host. A dropped player has 60 seconds to come back before a bot takes the seat; if the host leaves, the match ends. Names and built-in avatar ids are the only personal data sent; gallery photos stay on their phone. The code is in `ludo/lib/src/net`.
+
 ## Frame timing
 
 Debug and profile builds can start a benchmark match (one person, three bots, nothing saved) and log `[frames]` lines:
