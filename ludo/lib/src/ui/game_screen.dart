@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:game_kit/game_kit.dart';
@@ -95,7 +96,8 @@ class _GameScreenState extends State<GameScreen> {
     } else {
       _tilt.stop();
     }
-    optimized ? _frames.start() : _frames.stop();
+    // Debug and profile builds log timings in both modes; only 3D can downgrade.
+    optimized || !kReleaseMode ? _frames.start() : _frames.stop();
     setState(() {});
   }
 
