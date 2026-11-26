@@ -23,9 +23,11 @@ class _NoStorage extends LudoStorage {
   Future<({bool sound, bool haptics})> loadSettings() async => (sound: false, haptics: false);
   @override
   Future<void> saveSettings({required bool sound, required bool haptics}) async {}
+  @override
+  Future<void> saveView3d(bool value) async {}
 }
 
-Widget ludoBenchmark(GraphicsMode mode) {
+Widget ludoBenchmark(GraphicsMode mode, {bool view3d = false}) {
   final config = MatchConfig(
     seats: const [
       SeatConfig(name: 'You', corner: 3, avatar: 'a:cat'),
@@ -40,6 +42,7 @@ Widget ludoBenchmark(GraphicsMode mode) {
       state: GameState.fresh(config),
       storage: const _NoStorage(),
       graphics: GraphicsSettings.fixed(mode),
+      view3d: view3d,
     ),
   );
 }

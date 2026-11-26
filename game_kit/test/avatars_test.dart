@@ -72,7 +72,10 @@ void main() {
       const choice = AvatarChoice('owl', photoPath: '/no/such/photo.png');
       await tester.runAsync(() async {
         final shown = AvatarImages.instance.image(choice, 64);
-        await Future<void>.delayed(const Duration(milliseconds: 200));
+        // The read fails in the background; allow for a busy machine.
+        for (var i = 0; i < 200 && !AvatarImages.instance.failed(choice, 64); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
         expect(AvatarImages.instance.failed(choice, 64), isTrue);
         expect(identical(shown, AvatarImages.instance.image(const AvatarChoice('owl'), 64)), isTrue);
       });

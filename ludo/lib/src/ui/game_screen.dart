@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:game_kit/game_kit.dart';
 
 import '../game/models.dart';
+import 'board3d_view.dart';
 import 'board_view.dart';
 import 'controller.dart';
 import 'pause_menu.dart';
@@ -23,7 +24,11 @@ class GameScreen extends StatefulWidget {
     this.timing = const GameTiming(),
     this.graphics,
     this.tilt,
+    this.view3d,
   });
+
+  /// Forces the 2D or 3D board; null uses the remembered choice.
+  final bool? view3d;
 
   /// Defaults to the app-wide settings.
   final GraphicsSettings? graphics;
@@ -47,7 +52,20 @@ class _GameScreenState extends State<GameScreen> {
   bool _leaving = false;
   late final GraphicsSettings _graphics = widget.graphics ?? GraphicsSettings.instance;
   late final TiltController _tilt = widget.tilt ?? TiltController();
-  late final FrameMonitor _frames = FrameMonitor(settings: _graphics, onDowngrade: _announceDowngrade);
+  late final FrameMonitor _frames = FrameMonitor(
+    settings: _graphics,
+    onDowngrade: _announceDowngrade,
+    label: () => '${_view3d ? "3d" : "2d"} ${_graphics.quality.name}',
+  );
+  bool _view3d = false;
+
+  /// Switches the board between flat and 3D without touching the match.
+  void _setView(bool view3d) {
+    if (view3d == _view3d) return;
+    setState(() => _view3d = view3d);
+    widget.storage.saveView3d(view3d);
+    _applyGraphics();
+  }
   late final AppLifecycleListener _lifecycle;
   bool _visible = true;
 
@@ -70,6 +88,14 @@ class _GameScreenState extends State<GameScreen> {
       c.soundOn = s.sound;
       c.hapticsOn = s.haptics;
     });
+    _view3d = widget.view3d ?? false;
+    if (widget.view3d == null) {
+      widget.storage.loadView3d().then((v) {
+        if (!mounted) return;
+        setState(() => _view3d = v);
+        _applyGraphics();
+      });
+    }
     _graphics.addListener(_applyGraphics);
     _graphics.ensureLoaded();
     _lifecycle = AppLifecycleListener(
@@ -90,7 +116,7 @@ class _GameScreenState extends State<GameScreen> {
   void _applyGraphics() {
     if (!mounted) return;
     final optimized = _graphics.optimized;
-    c.rollMs = optimized ? DieView.rollDuration.inMilliseconds + 100 : 950;
+    c.rollMs = optimized || _view3d ? DieView.rollDuration.inMilliseconds + 100 : 950;
     if (optimized && _graphics.tiltEffect && !c.reduceMotion && _visible) {
       _tilt.start();
     } else {
@@ -149,6 +175,8 @@ class _GameScreenState extends State<GameScreen> {
       builder: (_) => PauseMenu(
         controller: c,
         graphics: _graphics,
+        view3d: _view3d,
+        onViewChanged: _setView,
         onSettingsChanged: () => widget.storage.saveSettings(sound: c.soundOn, haptics: c.hapticsOn),
       ),
     );
@@ -204,9 +232,18 @@ class _GameScreenState extends State<GameScreen> {
                       _podRow([0, 1]),
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: EdgeInsets.symmetric(horizontal: _view3d ? 0 : 12, vertical: _view3d ? 0 : 4),
                           child: Center(
-                            child: BoardView(controller: c, quality: _graphics.quality, tilt: _tilt),
+                            child: _view3d
+                                ? Board3DView(
+                                    controller: c,
+                                    quality: _graphics.quality,
+                                    tilt: _tilt,
+                                    onBounce: () {
+                                      if (c.hapticsOn) HapticFeedback.selectionClick();
+                                    },
+                                  )
+                                : BoardView(controller: c, quality: _graphics.quality, tilt: _tilt),
                           ),
                         ),
                       ),
@@ -235,7 +272,23 @@ class _GameScreenState extends State<GameScreen> {
             '${c.config.quick ? "Quick" : "Classic"} · ${c.config.seats.length} players'.toUpperCase(),
             style: KitTheme.body(size: 12, color: KitColors.muted),
           ),
-          const SizedBox(width: 34),
+          Semantics(
+            button: true,
+            label: _view3d ? 'Switch to 2D' : 'Switch to 3D',
+            excludeSemantics: true,
+            child: GestureDetector(
+              key: const ValueKey('view-toggle'),
+              onTap: () => _setView(!_view3d),
+              child: Container(
+                width: 44,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: KitColors.gold, borderRadius: BorderRadius.circular(12)),
+                // The button names the view you will get.
+                child: Text(_view3d ? '2D' : '3D', style: KitTheme.heading(size: 16, color: KitColors.goldInk)),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -335,12 +388,15 @@ class _GameScreenState extends State<GameScreen> {
                 enabled: c.humanToRoll && !c.paused,
                 onTap: c.rollTapped,
                 reduceMotion: c.reduceMotion,
-                quality: _graphics.quality,
+                // In 3D the die is thrown on the board, not in the dock.
+                quality: _view3d ? GraphicsQuality.performance : _graphics.quality,
+                hideFace: _view3d && c.phase == TurnPhase.rolling,
                 tilt: _tilt,
                 throwHeight: MediaQuery.sizeOf(context).height * 0.30,
                 onBounce: () {
                   if (c.hapticsOn) HapticFeedback.selectionClick();
                 },
+                duration: _view3d ? const Duration(milliseconds: 1) : null,
               ),
               _roundButton(Icons.pause_circle_outline_rounded, 'Pause', _pause, size: 48),
             ],

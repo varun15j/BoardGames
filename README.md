@@ -77,6 +77,12 @@ Pieces that can move are circled by a turning ring (`MoveRing`), and a walking p
 
 Each yard shows its player's avatar as a faint watermark with a face: the top two token spots are blinking eyes in the player's colour and the bottom two are cheeks. Each token is the creature of its avatar: a frog hops on big back legs, a cat trots with a swinging tail, an owl waddles and flaps, a rocket floats, and food and sports things walk on little legs. The player's colour edges the body and rings its feet, with the shape mark as a badge. Prints match (paws, webbed feet, shoes or dots). Three or more tokens on a square show a count. Performance mode uses a two-frame leg swing, open eyes and no shadows.
 
+## 3D board
+
+The gold **3D**/**2D** button on the game screen (also in the pause menu) switches the board mid-match; the choice is remembered. The 3D view draws the same game state with a small renderer of our own in `game_kit/lib/src/three` (no extra packages): a perspective camera, low-poly solids lit and depth-sorted, and one `drawVertices` call per object.
+
+Cat, frog and owl have their own models and movements (four-legged trot with a swinging tail; crouch and leap; wing-flapping flight). Every other avatar uses a simple mascot with its picture as the face, moving in the style listed by `gaitFor`. With Performance graphics the 3D view uses fewer triangles, no shadows and no tilt.
+
 ## Frame timing
 
 Debug and profile builds can start a benchmark match (one person, three bots, nothing saved) and log `[frames]` lines:
@@ -87,7 +93,7 @@ adb shell am start -n com.raceboard.board_games/.MainActivity --es route /bench/
 adb logcat | findstr "[frames]"
 ```
 
-Use `/bench/performance` for the flat mode.
+Use `/bench/performance` for the flat mode, and `/bench/3d` or `/bench/3dlow` for the 3D board.
 
 ## Using the Ludo module from another app
 

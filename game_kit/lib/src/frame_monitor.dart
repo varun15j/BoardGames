@@ -9,7 +9,10 @@ import 'graphics.dart';
 /// Debug builds are far slower than what players get, so they only log the
 /// numbers and never downgrade.
 class FrameMonitor {
-  FrameMonitor({required this.settings, required this.onDowngrade, this.canDowngrade = !kDebugMode});
+  FrameMonitor({required this.settings, required this.onDowngrade, this.canDowngrade = !kDebugMode, this.label});
+
+  /// What the log calls the scene being measured.
+  final String Function()? label;
 
   final GraphicsSettings settings;
   final VoidCallback onDowngrade;
@@ -55,7 +58,7 @@ class FrameMonitor {
     if (!kReleaseMode) {
       final worst = _frames.reduce((a, b) => a > b ? a : b);
       final slow = _frames.where((f) => f > 16.7).length;
-      debugPrint('[frames] ${settings.quality.name}: avg ${average.toStringAsFixed(1)} ms, '
+      debugPrint('[frames] ${label?.call() ?? settings.quality.name}: avg ${average.toStringAsFixed(1)} ms, '
           'worst ${worst.toStringAsFixed(1)} ms, $slow of ${_frames.length} over 16.7 ms');
     }
     final slowDevice = shouldDowngrade(_frames);

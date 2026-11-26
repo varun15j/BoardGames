@@ -17,16 +17,18 @@ void main() {
 /// `adb shell am start -n APP_ID/.MainActivity --es route /bench/optimized`
 Widget? _benchmark() {
   if (kReleaseMode) return null;
-  final mode = switch (PlatformDispatcher.instance.defaultRouteName) {
-    '/bench/optimized' => GraphicsMode.optimized,
-    '/bench/performance' => GraphicsMode.performance,
+  final route = PlatformDispatcher.instance.defaultRouteName;
+  final view3d = route.startsWith('/bench/3d');
+  final mode = switch (route) {
+    '/bench/optimized' || '/bench/3d' => GraphicsMode.optimized,
+    '/bench/performance' || '/bench/3dlow' => GraphicsMode.performance,
     _ => null,
   };
   if (mode == null) return null;
   return MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: KitTheme.data(),
-    onGenerateInitialRoutes: (_) => [MaterialPageRoute<void>(builder: (_) => ludoBenchmark(mode))],
+    onGenerateInitialRoutes: (_) => [MaterialPageRoute<void>(builder: (_) => ludoBenchmark(mode, view3d: view3d))],
     onGenerateRoute: (_) => null,
   );
 }

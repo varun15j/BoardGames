@@ -3,6 +3,10 @@
 library;
 
 export 'src/theme.dart';
+export 'src/three/creature3d.dart';
+export 'src/three/dice3.dart';
+export 'src/three/math3d.dart';
+export 'src/three/mesh.dart';
 export 'src/avatars/avatar_picker.dart';
 export 'src/avatars/avatar_store.dart';
 export 'src/avatars/catalog.dart';
