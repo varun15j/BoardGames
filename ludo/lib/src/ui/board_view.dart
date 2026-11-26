@@ -8,6 +8,7 @@ import 'package:game_kit/game_kit.dart';
 import '../game/board.dart';
 import '../game/models.dart';
 import 'controller.dart';
+import 'seat_avatar.dart';
 
 /// The playing board: painted tiles, tokens, landing ghosts and effects.
 class BoardView extends StatefulWidget {
@@ -35,6 +36,32 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
   int _fxId = 0;
   final GlobalKey<FootprintLayerState> _footprints = GlobalKey();
 
+  // One shared clock drives every yard's blinking.
+  final List<BlinkSchedule> _blinks = [for (var i = 0; i < 4; i++) BlinkSchedule(math.Random())];
+  final List<ValueNotifier<bool>> _eyesShut = [for (var i = 0; i < 4; i++) ValueNotifier(false)];
+  Timer? _blinkTimer;
+  Duration _blinkClock = Duration.zero;
+  static const _blinkTick = Duration(milliseconds: 60);
+
+  /// Eyes stay open in performance mode and with reduced motion.
+  void _syncBlinking() {
+    final wanted = _optimized && !c.reduceMotion;
+    if (wanted && _blinkTimer == null) {
+      _blinkTimer = Timer.periodic(_blinkTick, (_) {
+        _blinkClock += _blinkTick;
+        for (var i = 0; i < 4; i++) {
+          _eyesShut[i].value = _blinks[i].isClosedAt(_blinkClock);
+        }
+      });
+    } else if (!wanted && _blinkTimer != null) {
+      _blinkTimer!.cancel();
+      _blinkTimer = null;
+      for (final e in _eyesShut) {
+        e.value = false;
+      }
+    }
+  }
+
   LudoController get c => widget.controller;
   bool get _optimized => widget.quality == GraphicsQuality.optimized;
 
@@ -45,6 +72,7 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _sub = c.events.listen(_onEvent);
+    _syncBlinking();
   }
 
   @override
@@ -54,11 +82,16 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
       _sub?.cancel();
       _sub = c.events.listen(_onEvent);
     }
+    _syncBlinking();
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _blinkTimer?.cancel();
+    for (final e in _eyesShut) {
+      e.dispose();
+    }
     _shake.dispose();
     super.dispose();
   }
@@ -158,6 +191,7 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
                   clipBehavior: Clip.none,
                   children: [
                     Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: BoardPainter()))),
+                    ..._yards(u),
                     // Prints sit under the pieces.
                     Positioned.fill(
                       child: FootprintLayer(key: _footprints, unit: u, quality: widget.quality),
@@ -173,6 +207,40 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
         ),
       ),
     );
+  }
+
+  /// A living face in each player's yard, behind the token spots.
+  List<Widget> _yards(double u) {
+    final turnCorner = c.state.cornerOf(c.state.turn);
+    Offset centreOf(int corner) {
+      final o = Board.baseOrigin[corner];
+      return Offset(o[1] + 3, o[0] + 3);
+    }
+
+    return [
+      for (var s = 0; s < c.state.seatCount; s++)
+        () {
+          final corner = c.state.cornerOf(s);
+          final o = Board.baseOrigin[corner];
+          final to = centreOf(turnCorner) - centreOf(corner);
+          return Positioned(
+            left: o[1] * u,
+            top: o[0] * u,
+            child: IgnorePointer(
+              child: YardFace(
+                key: ValueKey('yard-$corner'),
+                color: kCornerStyles[corner].color,
+                avatar: seatAvatar(c.config.seats[s]),
+                closed: _eyesShut[corner],
+                size: u * 6,
+                // Everyone glances at whoever is playing.
+                look: to.distance == 0 ? Offset.zero : to / to.distance,
+                flat: !_optimized,
+              ),
+            ),
+          );
+        }(),
+    ];
   }
 
   Widget _ghost(GhostInfo g, double u) {
@@ -228,6 +296,9 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
             tilt: widget.tilt,
             color: style.color,
             shape: style.shape,
+            avatar: seatAvatar(c.config.seats[e.seat]),
+            dizzy: fly,
+            home: home,
             size: tokenSize,
             step: c.display[e.seat][e.token],
             movable: isMovable,
@@ -249,6 +320,9 @@ class TokenView extends StatefulWidget {
     super.key,
     required this.color,
     required this.shape,
+    required this.avatar,
+    this.dizzy = false,
+    this.home = false,
     required this.size,
     required this.step,
     required this.movable,
@@ -264,6 +338,11 @@ class TokenView extends StatefulWidget {
 
   final Color color;
   final PlayerShape shape;
+  final AvatarChoice avatar;
+
+  /// Spinning back to the yard after a capture.
+  final bool dizzy;
+  final bool home;
   final double size;
   final int step;
   final bool movable;
@@ -279,6 +358,8 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
   late final AnimationController _hop = AnimationController(vsync: this, duration: const Duration(milliseconds: LudoController.stepMs));
   late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
 
+  bool _leftLeads = false;
+
   @override
   void initState() {
     super.initState();
@@ -288,7 +369,17 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(TokenView old) {
     super.didUpdateWidget(old);
-    if (old.step != widget.step && !widget.reduceMotion) _hop.forward(from: 0);
+    if (old.step != widget.step && !widget.reduceMotion) {
+      _leftLeads = !_leftLeads;
+      // Walking home ends with a little double cheer jump.
+      if (widget.home && !old.home) {
+        _hop.forward(from: 0).then((_) {
+          if (mounted) _hop.forward(from: 0);
+        });
+      } else if (!widget.dizzy) {
+        _hop.forward(from: 0);
+      }
+    }
     _syncPulse();
   }
 
@@ -340,12 +431,21 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
                         1 + 0.22 * h - 0.14 * squash,
                         1,
                       ),
-                      child: PlayerToken(
-                        color: widget.color,
-                        shape: widget.shape,
-                        size: s,
-                        quality: widget.quality,
-                        tilt: widget.tilt,
+                      child: TweenAnimationBuilder<double>(
+                        // A dizzy character spins on its way back.
+                        tween: Tween(begin: 0, end: widget.dizzy && !widget.reduceMotion ? 1 : 0),
+                        duration: Duration(milliseconds: widget.dizzy ? 550 : 0),
+                        builder: (context, spin, child) => Transform.rotate(angle: spin * math.pi * 4, child: child),
+                        child: CharacterToken(
+                          color: widget.color,
+                          shape: widget.shape,
+                          avatar: widget.avatar,
+                          size: s,
+                          pose: legPose(_hop.value, _leftLeads, flat: widget.quality == GraphicsQuality.performance),
+                          dizzy: widget.dizzy,
+                          flat: widget.quality == GraphicsQuality.performance,
+                          tilt: widget.tilt,
+                        ),
                       ),
                     ),
                   ),
@@ -574,7 +674,7 @@ class BoardPainter extends CustomPainter {
       );
       for (final s in Board.sockets) {
         final c = Offset((o[1] + s[1]) * u, (o[0] + s[0]) * u);
-        canvas.drawCircle(c, u * 0.55, Paint()..color = color.withValues(alpha: 0.45));
+        canvas.drawCircle(c, u * 0.55, Paint()..color = color.withValues(alpha: 0.2));
         canvas.drawCircle(
           c,
           u * 0.55,

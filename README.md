@@ -58,6 +58,25 @@ Pick one in the pause menu; it applies immediately. In release and profile build
 
 Pieces that can move are circled by a turning ring (`MoveRing`), and a walking piece leaves alternating footprints that fade (`FootprintLayer`; plain dots in Performance mode).
 
+## Terminology
+
+| Name | Meaning |
+| --- | --- |
+| Yard | The large coloured corner square where a player's tokens wait |
+| Token spots | The four circles inside a yard |
+| Tokens | The four pieces of a player (also called pieces or goti) |
+| Start square | The coloured square where a token enters the track |
+| Track | The loop of 52 squares |
+| Safe squares | The start squares and the star squares |
+| Home column | The coloured lane leading to the centre |
+| Home | The centre triangles where tokens finish |
+
+## Avatars and characters
+
+60 original avatars drawn in code, in six categories (Animals, People, Fantasy, Space, Food, Sports), live in `game_kit`. A player can use a gallery photo instead: it is cropped to 256 px, kept only in the app's private storage, excluded from Android backups and never uploaded.
+
+Each yard shows its player's avatar as a faint watermark with a face: the top two token spots are blinking eyes in the player's colour and the bottom two are cheeks. Tokens are small characters with the avatar as their face, the colour's shape mark as a badge, and legs that walk from square to square. Performance mode uses flat characters with a two-frame leg swing, open eyes and no shadows.
+
 ## Using the Ludo module from another app
 
 ```yaml

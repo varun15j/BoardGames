@@ -3,6 +3,12 @@
 library;
 
 export 'src/theme.dart';
+export 'src/avatars/avatar_picker.dart';
+export 'src/avatars/avatar_store.dart';
+export 'src/avatars/catalog.dart';
+export 'src/avatars/profile.dart';
+export 'src/characters.dart';
+export 'src/yard_face.dart';
 export 'src/night_background.dart';
 export 'src/buttons.dart';
 export 'src/token_disc.dart';

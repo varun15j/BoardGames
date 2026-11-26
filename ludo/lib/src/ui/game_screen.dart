@@ -9,6 +9,7 @@ import 'board_view.dart';
 import 'controller.dart';
 import 'pause_menu.dart';
 import 'result_screen.dart';
+import 'seat_avatar.dart';
 import 'ludo_game.dart';
 import 'storage.dart';
 
@@ -282,6 +283,7 @@ class _GameScreenState extends State<GameScreen> {
           reactionEmoji: reaction?.$1,
           reactionId: reaction?.$2 ?? 0,
           reduceMotion: c.reduceMotion,
+          portrait: AvatarView(choice: seatAvatar(s), size: 36),
         ),
       );
     }
@@ -357,7 +359,11 @@ class _GameScreenState extends State<GameScreen> {
           children: [
             Text('Pass to', style: KitTheme.body(size: 16, color: KitColors.muted)),
             const SizedBox(height: 14),
-            PlayerToken(color: style.color, shape: style.shape, size: 84, quality: _graphics.quality),
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(color: style.color, shape: BoxShape.circle),
+              child: AvatarView(choice: seatAvatar(s), size: 96),
+            ),
             const SizedBox(height: 14),
             Text(s.name, textAlign: TextAlign.center, style: KitTheme.heading(size: 38, color: style.color)),
             const SizedBox(height: 28),

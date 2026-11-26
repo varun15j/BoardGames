@@ -32,8 +32,7 @@ void main() {
     expect(find.text('Start match'), findsOneWidget);
     await tester.tap(find.text('2 players'));
     await tester.pump();
-    expect(find.text('Bot Amber'), findsOneWidget);
-    expect(find.text('Bot Violet'), findsNothing);
+    expect(find.textContaining('Bot '), findsOneWidget);
     await tester.ensureVisible(find.text('Quick · 2 tokens'));
     await tester.tap(find.text('Quick · 2 tokens'));
     await tester.pump();

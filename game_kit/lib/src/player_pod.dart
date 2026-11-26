@@ -21,7 +21,11 @@ class PlayerPod extends StatelessWidget {
     this.reactionEmoji,
     this.reactionId = 0,
     this.reduceMotion = false,
+    this.portrait,
   });
+
+  /// Shown inside the timer ring instead of the initial letter.
+  final Widget? portrait;
 
   final String name;
   final Color color;
@@ -50,7 +54,7 @@ class PlayerPod extends StatelessWidget {
             size: const Size(46, 46),
             painter: TimerRingPainter(fraction: active ? (timerFraction ?? 0) : 0, color: color),
           ),
-          InitialDisc(color: color, letter: name.isEmpty ? '?' : name.characters.first.toUpperCase(), size: 36),
+          portrait ?? InitialDisc(color: color, letter: name.isEmpty ? '?' : name.characters.first.toUpperCase(), size: 36),
           if (reactionEmoji != null)
             Positioned(
               left: 0,
