@@ -829,7 +829,8 @@ class Board3DPainter extends CustomPainter {
     canvas.drawPath(_circlePath(at + const V3(0, 0.015, 0), 0.5 * token.scale, 14), Paint()..color = style.color);
     // At rest a cat stands three-quarters on so its body and tail show, and
     // every creature tips its face a little up toward the camera.
-    final rest = gait == Gait3.quadruped ? 0.65 : 0.2;
+    // The stand-in faces the player squarely, so its picture sits on its head.
+    final rest = model.species == Species3.mascot ? 0.0 : (gait == Gait3.quadruped ? 0.65 : 0.2);
     final turned = moving ? heading : heading + rest * (heading == 0 ? 1 : 0);
     final world = ground * scale * Mat.rotX(-0.22) * Mat.rotY(turned);
     scene.batch.clear();
@@ -840,7 +841,7 @@ class Board3DPainter extends CustomPainter {
 
     // Overlays: a face for the mascot and the shape badge.
     if (model.species == Species3.mascot) {
-      final head = world.apply(model.headPoint(gait, anim) + const V3(0, 0, 0.27));
+      final head = world.apply(model.headPoint(gait, anim) + const V3(0, 0, 0.2));
       final r = camera.pixelsPerUnit(head) * kMascotFaceRadius * kCreatureScale * token.scale;
       final face = _roundFace(choice);
       final rect = Rect.fromCircle(center: camera.project(head), radius: r);
