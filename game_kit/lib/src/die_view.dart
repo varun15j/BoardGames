@@ -133,10 +133,28 @@ class DieViewState extends State<DieView> with TickerProviderStateMixin {
         child: SizedBox(
           width: size,
           height: size,
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_roll, _invite, widget.tilt]),
-            builder: (context, _) => widget.flat ? _flatFrame(size) : _frame(size),
-          ),
+          child: widget.flat
+              ? AnimatedBuilder(
+                  animation: Listenable.merge([_roll, _invite]),
+                  builder: (context, _) => _flatFrame(size),
+                )
+              : Stack(
+                  clipBehavior: Clip.none,
+                  fit: StackFit.expand,
+                  children: [
+                    // The glowing dock and the die are separate layers, so the
+                    // glow does not repaint a die that is lying still.
+                    RepaintBoundary(
+                      child: AnimatedBuilder(animation: _invite, builder: (context, _) => _dock(size)),
+                    ),
+                    RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: Listenable.merge([_roll, widget.tilt]),
+                        builder: (context, _) => _frame(size),
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -165,13 +183,30 @@ class DieViewState extends State<DieView> with TickerProviderStateMixin {
     );
   }
 
+  /// The dock the die is thrown from; it glows while a tap is wanted.
+  Widget _dock(double size) {
+    final glow = widget.enabled ? math.sin(_invite.value * math.pi) : 0.0;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * 0.31),
+        color: widget.color.withValues(alpha: 0.30),
+        border: Border.all(color: widget.color, width: 2),
+        boxShadow: [
+          if (widget.enabled)
+            BoxShadow(color: widget.color.withValues(alpha: 0.7 * (1 - glow)), spreadRadius: 10 * glow),
+        ],
+      ),
+    );
+  }
+
   Widget _frame(double size) {
     final t = _roll.value;
     final thrown = !widget.reduceMotion && t < 1;
     final h = thrown ? DieThrow.height(t) : 0.0;
     final travel = thrown ? DieThrow.travel(t) : 0.0;
-    final tilt = widget.tilt?.value ?? Offset.zero;
-    final glow = widget.enabled ? math.sin(_invite.value * math.pi) : 0.0;
+    // Coarse steps: tiny sensor noise should not redraw the die.
+    final raw = widget.tilt?.value ?? Offset.zero;
+    final tilt = Offset((raw.dx * 12).round() / 12, (raw.dy * 12).round() / 12);
 
     // The die grows as it leaves the table toward the viewer.
     final ground = Offset(thrown ? size * 0.35 * math.sin(travel * math.pi / 2) : 0, -widget.throwHeight * travel);
@@ -187,18 +222,6 @@ class DieViewState extends State<DieView> with TickerProviderStateMixin {
       clipBehavior: Clip.none,
       alignment: Alignment.center,
       children: [
-        // The dock it is thrown from.
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(size * 0.31),
-            color: widget.color.withValues(alpha: 0.30),
-            border: Border.all(color: widget.color, width: 2),
-            boxShadow: [
-              if (widget.enabled)
-                BoxShadow(color: widget.color.withValues(alpha: 0.7 * (1 - glow)), spreadRadius: 10 * glow),
-            ],
-          ),
-        ),
         Transform.translate(
           offset: ground + shadowShift,
           child: Container(
@@ -206,8 +229,11 @@ class DieViewState extends State<DieView> with TickerProviderStateMixin {
             height: shadowSize * 0.6,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.all(Radius.elliptical(shadowSize / 2, shadowSize * 0.3)),
+              // A soft blur only while it flies; at rest a plain shadow.
+              color: thrown ? null : Colors.black.withValues(alpha: 0.28),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.5 - 0.3 * h), blurRadius: 6 + 18 * h),
+                if (thrown)
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.5 - 0.3 * h), blurRadius: 6 + 18 * h),
               ],
             ),
           ),

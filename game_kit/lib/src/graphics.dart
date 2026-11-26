@@ -57,6 +57,13 @@ Future<DeviceCapability?> _readDevice() async {
 class GraphicsSettings extends ChangeNotifier {
   GraphicsSettings({Future<DeviceCapability?> Function()? readDevice}) : _read = readDevice ?? _readDevice;
 
+  /// A mode that is neither loaded nor saved, for benchmarks.
+  GraphicsSettings.fixed(GraphicsMode mode)
+      : _read = _readDevice,
+        _mode = mode {
+    _loading = Future<void>.value();
+  }
+
   /// Shared by every game in the app.
   static GraphicsSettings instance = GraphicsSettings();
 

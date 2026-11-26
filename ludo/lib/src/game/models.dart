@@ -4,7 +4,16 @@ enum BotLevel { easy, normal }
 
 /// One seat at the table. Seats play in list order (clockwise).
 class SeatConfig {
-  const SeatConfig({required this.name, required this.corner, this.isBot = false, this.level = BotLevel.normal});
+  const SeatConfig({
+    required this.name,
+    required this.corner,
+    this.isBot = false,
+    this.level = BotLevel.normal,
+    this.avatar,
+  });
+
+  /// The seat's avatar or photo, as encoded by the UI; null for the default.
+  final String? avatar;
 
   final String name;
 
@@ -13,16 +22,23 @@ class SeatConfig {
   final bool isBot;
   final BotLevel level;
 
-  SeatConfig copyWith({String? name, bool? isBot, BotLevel? level}) =>
-      SeatConfig(name: name ?? this.name, corner: corner, isBot: isBot ?? this.isBot, level: level ?? this.level);
+  SeatConfig copyWith({String? name, bool? isBot, BotLevel? level, String? avatar}) => SeatConfig(
+        name: name ?? this.name,
+        corner: corner,
+        isBot: isBot ?? this.isBot,
+        level: level ?? this.level,
+        avatar: avatar ?? this.avatar,
+      );
 
-  Map<String, Object?> toJson() => {'name': name, 'corner': corner, 'bot': isBot, 'level': level.name};
+  Map<String, Object?> toJson() =>
+      {'name': name, 'corner': corner, 'bot': isBot, 'level': level.name, 'avatar': avatar};
 
   factory SeatConfig.fromJson(Map<String, Object?> j) => SeatConfig(
         name: j['name']! as String,
         corner: j['corner']! as int,
         isBot: j['bot']! as bool,
         level: BotLevel.values.byName(j['level']! as String),
+        avatar: j['avatar'] as String?,
       );
 }
 

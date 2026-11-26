@@ -32,13 +32,12 @@ void main() {
       home: GameScreen(state: state, timing: GameTiming.instant, graphics: graphics, tilt: tilt),
     ));
     await tester.pump();
-    PawnPainter? pawn() => tester
+    CharacterPainter? pawn() => tester
         .widgetList<CustomPaint>(find.byType(CustomPaint))
         .map((p) => p.painter)
-        .whereType<PawnPainter>()
+        .whereType<CharacterPainter>()
         .firstOrNull;
-    expect(pawn(), isNotNull);
-    expect(find.byType(TokenDisc), findsNothing);
+    expect(pawn()!.flat, isFalse);
 
     await tester.tap(find.bySemanticsLabel('Roll the die'));
     for (var i = 0; i < 40; i++) {
@@ -53,7 +52,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(graphics.mode, GraphicsMode.performance);
     expect(find.text('Tilt effect'), findsNothing);
-    expect(pawn(), isNull);
+    expect(pawn()!.flat, isTrue);
     expect(tilt.running, isFalse);
 
     await tester.pumpWidget(const SizedBox());

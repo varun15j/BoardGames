@@ -5,9 +5,13 @@ import 'package:flutter/scheduler.dart';
 
 import 'graphics.dart';
 
+/// The shape of a print: a shoe, a paw, a webbed foot or a plain dot.
+enum FootprintKind { shoe, paw, webbed, dot }
+
 /// One print left on the board. Positions are in cell units.
 class Footprint {
   Footprint({
+    this.kind = FootprintKind.shoe,
     required this.position,
     required this.angle,
     required this.leftFoot,
@@ -15,6 +19,7 @@ class Footprint {
     required this.born,
   });
 
+  FootprintKind kind;
   Offset position;
   double angle;
   bool leftFoot;
@@ -81,6 +86,7 @@ class FootprintTrail extends ChangeNotifier {
     required int stepNumber,
     required Color color,
     required Duration now,
+    FootprintKind kind = FootprintKind.shoe,
   }) {
     final left = isLeftFoot(stepNumber);
     while (prints.length >= style.maxAlive) {
@@ -90,8 +96,9 @@ class FootprintTrail extends ChangeNotifier {
     // The print's toe points the way the walker is going.
     final angle = math.atan2(direction.dx, -direction.dy);
     final print = _spare.isEmpty
-        ? Footprint(position: position, angle: angle, leftFoot: left, color: color, born: now)
+        ? Footprint(position: position, angle: angle, leftFoot: left, color: color, born: now, kind: kind)
         : (_spare.removeLast()
+          ..kind = kind
           ..position = position
           ..angle = angle
           ..leftFoot = left
@@ -132,8 +139,21 @@ class FootprintLayerState extends State<FootprintLayer> with SingleTickerProvide
     trail.style = FootprintStyle.of(widget.quality);
   }
 
-  void step({required Offset landing, required Offset direction, required int stepNumber, required Color color}) {
-    trail.add(landing: landing, direction: direction, stepNumber: stepNumber, color: color, now: _clock.value);
+  void step({
+    required Offset landing,
+    required Offset direction,
+    required int stepNumber,
+    required Color color,
+    FootprintKind kind = FootprintKind.shoe,
+  }) {
+    trail.add(
+      landing: landing,
+      direction: direction,
+      stepNumber: stepNumber,
+      color: color,
+      now: _clock.value,
+      kind: kind,
+    );
     if (!_ticker.isActive) {
       _offset = _clock.value;
       _ticker.start();
@@ -189,15 +209,20 @@ class FootprintPainter extends CustomPainter {
         ..color = Colors.white.withValues(alpha: opacity * 0.9);
       canvas.save();
       canvas.translate(p.position.dx * unit, p.position.dy * unit);
-      if (style.dots) {
-        canvas.drawCircle(Offset.zero, unit * 0.14, fill);
-        canvas.drawCircle(Offset.zero, unit * 0.14, rim);
+      if (style.dots || p.kind == FootprintKind.dot) {
+        final r = unit * (style.dots ? 0.14 : 0.11);
+        canvas.drawCircle(Offset.zero, r, fill);
+        canvas.drawCircle(Offset.zero, r, rim);
       } else {
         canvas.rotate(p.angle);
         final s = unit * footprintScale(age);
-        final shoe = shoePrintPath(s, p.leftFoot);
-        canvas.drawPath(shoe, rim);
-        canvas.drawPath(shoe, fill);
+        final path = switch (p.kind) {
+          FootprintKind.paw => pawPrintPath(s),
+          FootprintKind.webbed => webbedPrintPath(s),
+          _ => shoePrintPath(s, p.leftFoot),
+        };
+        canvas.drawPath(path, rim);
+        canvas.drawPath(path, fill);
       }
       canvas.restore();
     }
@@ -206,6 +231,26 @@ class FootprintPainter extends CustomPainter {
   @override
   bool shouldRepaint(FootprintPainter old) => old.unit != unit || old.trail != trail;
 }
+
+/// A paw: one pad and three toes, pointing up.
+Path pawPrintPath(double unit) {
+  final path = Path()
+    ..addOval(Rect.fromCenter(center: Offset(0, 0.08 * unit), width: 0.24 * unit, height: 0.19 * unit));
+  for (final (x, y) in [(-0.13, -0.08), (0.0, -0.13), (0.13, -0.08)]) {
+    path.addOval(Rect.fromCircle(center: Offset(x * unit, y * unit), radius: 0.055 * unit));
+  }
+  return path;
+}
+
+/// A frog or penguin foot: three spread toes joined by webbing.
+Path webbedPrintPath(double unit) => Path()
+  ..moveTo(0, 0.18 * unit)
+  ..lineTo(-0.2 * unit, -0.12 * unit)
+  ..lineTo(-0.07 * unit, -0.04 * unit)
+  ..lineTo(0, -0.2 * unit)
+  ..lineTo(0.07 * unit, -0.04 * unit)
+  ..lineTo(0.2 * unit, -0.12 * unit)
+  ..close();
 
 /// A shoe print about half a cell long, toe pointing up: sole plus heel.
 Path shoePrintPath(double unit, bool leftFoot) {
