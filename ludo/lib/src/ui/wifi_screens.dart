@@ -75,7 +75,8 @@ Widget _seatRow({required int index, required String name, required String avata
   );
 }
 
-String _myName(PlayerProfile profile) => profile.name.isEmpty ? 'Player' : profile.name;
+/// Empty means the room names the player by seat (Host, Player 2, ...).
+String _myName(PlayerProfile profile) => profile.name;
 
 class WifiScreen extends StatelessWidget {
   const WifiScreen({super.key});
