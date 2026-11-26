@@ -16,6 +16,10 @@ import 'seat_avatar.dart';
 /// the origin with rows running toward the player.
 V3 cellToWorld(double row, double col, [double y = 0]) => V3(col - 7.5, y, row - 7.5);
 
+/// How far down the camera looks (65 degrees), and how big creatures are.
+const double kCameraPitch = 1.134;
+const double kCreatureScale = 1.45;
+
 /// Height of the tops of the track tiles.
 const double kTileTop = 0.16;
 
@@ -282,8 +286,7 @@ class Board3DViewState extends State<Board3DView> with SingleTickerProviderState
   @override
   Widget build(BuildContext context) {
     final tilt = _low ? null : widget.tilt;
-    return AspectRatio(
-      aspectRatio: 1,
+    return SizedBox.expand(
       child: Semantics(
         label: '3D board',
         child: GestureDetector(
@@ -295,7 +298,9 @@ class Board3DViewState extends State<Board3DView> with SingleTickerProviderState
               RepaintBoundary(
                 child: ListenableBuilder(
                   listenable: AvatarImages.instance,
-                  builder: (context, _) => CustomPaint(painter: Board3DPainter(this, tilt)),
+                  builder: (context, _) => CustomPaint(
+                    painter: Board3DPainter(this, tilt, MediaQuery.devicePixelRatioOf(context)),
+                  ),
                 ),
               ),
               if (_banner != null)
@@ -336,6 +341,14 @@ class DieThrow3 {
   double progress(double now) => ((now - start) / duration).clamp(0.0, 1.0);
 }
 
+/// A resting creature as recorded drawing commands.
+class TokenPicture {
+  TokenPicture(this.picture, this.key, this.drawn);
+  final ui.Picture picture;
+  final Object key;
+  final double drawn;
+}
+
 /// Everything the painter needs that changes over time, plus its caches.
 class Scene3 extends ChangeNotifier {
   final Map<TokenRef, TokenState3> tokens = {};
@@ -345,9 +358,16 @@ class Scene3 extends ChangeNotifier {
   List<bool> eyesShut = const [false, false, false, false];
   final Map<(String, int, bool), CreatureModel> models = {};
   final Map<bool, DieModel> dice = {};
+
+  /// Resting creatures, each drawn once and replayed.
+  final Map<TokenRef, TokenPicture> resting = {};
+  final Map<(AvatarChoice, ui.Image), ui.Image> faces = {};
+  ui.Image? floorImage;
+  final List<(int, Path, Paint, bool?)> eyes = [];
+  int frame = 0;
   final TriangleBatch batch = TriangleBatch(1024);
-  Camera3 camera = Camera3();
-  ui.Picture? floor;
+  Camera3 camera = Camera3(pitch: kCameraPitch);
+  Offset lean = Offset.zero;
   Object? floorKey;
   DieThrow3? die;
   int rollId = 0;
@@ -371,15 +391,27 @@ class Scene3 extends ChangeNotifier {
 
   void repaint() => notifyListeners();
 
+  void clearResting() {
+    for (final p in resting.values) {
+      p.picture.dispose();
+    }
+    resting.clear();
+  }
+
   void invalidate() {
     floorKey = null;
     models.clear();
+    clearResting();
     notifyListeners();
   }
 
   @override
   void dispose() {
-    floor?.dispose();
+    floorImage?.dispose();
+    clearResting();
+    for (final f in faces.values) {
+      f.dispose();
+    }
     trail.dispose();
     super.dispose();
   }
@@ -387,8 +419,11 @@ class Scene3 extends ChangeNotifier {
 
 /// Draws the floor (cached per camera angle), then the moving things.
 class Board3DPainter extends CustomPainter {
-  Board3DPainter(this.view, this.tilt)
+  Board3DPainter(this.view, this.tilt, this.ratio)
       : super(repaint: tilt == null ? view.scene : Listenable.merge([view.scene, tilt]));
+
+  /// Device pixel ratio the cached board is drawn at.
+  final double ratio;
 
   final Board3DViewState view;
   final ValueListenable<Offset>? tilt;
@@ -405,24 +440,42 @@ class Board3DPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     scene.painted = scene.now;
-    // Tilt orbits the camera in small steps, so the floor is rarely redrawn.
+    scene.frame++;
+    // Tilt orbits the camera in coarse steps with a wide dead band, so the
+    // cached board is only redrawn after a real movement of the phone.
     final t = tilt?.value ?? Offset.zero;
-    final yaw = (t.dx * 6).round() / 6 * 0.09;
-    final pitch = 1.03 + (t.dy * 6).round() / 6 * 0.06;
-    final key = (size.width, size.height, yaw, pitch, scene.low);
+    if ((t - scene.lean).distance > 0.4 || (t == Offset.zero && scene.lean != Offset.zero)) scene.lean = t;
+    final yaw = scene.lean.dx * 0.07;
+    final pitch = kCameraPitch + scene.lean.dy * 0.05;
+    final images = [
+      for (var s = 0; s < c.state.seatCount; s++)
+        AvatarImages.instance.image(seatAvatar(c.config.seats[s]), 128),
+    ];
+    final key = (size.width, size.height, yaw, pitch, scene.low, Object.hashAll(images));
     if (key != scene.floorKey) {
       scene.floorKey = key;
-      scene.camera = Camera3(pitch: pitch, yaw: yaw)..fit(_bounds, size.width, size.height);
-      scene.floor?.dispose();
+      scene.camera = Camera3(pitch: pitch, yaw: yaw)..fit(_bounds, size.width, size.height, 0.995);
       final recorder = ui.PictureRecorder();
-      _paintFloor(Canvas(recorder));
-      scene.floor = recorder.endRecording();
+      final offscreen = Canvas(recorder)..scale(ratio);
+      _paintFloor(offscreen);
+      _paintYardFloor(offscreen);
+      final picture = recorder.endRecording();
+      scene.floorImage?.dispose();
+      scene.floorImage = picture.toImageSync((size.width * ratio).ceil(), (size.height * ratio).ceil());
+      picture.dispose();
+      scene.eyes.clear();
+      scene.clearResting();
     }
-    canvas.drawPicture(scene.floor!);
-    _paintYardFaces(canvas);
+    final floor = scene.floorImage!;
+    canvas.drawImageRect(
+      floor,
+      Rect.fromLTWH(0, 0, floor.width.toDouble(), floor.height.toDouble()),
+      Rect.fromLTWH(0, 0, floor.width / ratio, floor.height / ratio),
+      Paint()..filterQuality = FilterQuality.low,
+    );
+    _paintEyes(canvas);
     _paintFootprints(canvas);
     _paintRings(canvas);
-    if (!scene.low) _paintShadows(canvas);
     _paintObjects(canvas);
   }
 
@@ -522,39 +575,55 @@ class Board3DPainter extends CustomPainter {
 
   // ------------------------------------------------------------ decals
 
-  /// The avatar watermark on each yard floor, with blinking eyes on the top
-  /// spots and cheeks on the bottom ones.
-  void _paintYardFaces(Canvas canvas) {
+  /// The avatar watermark and cheeks on each yard floor.
+  void _paintYardFloor(Canvas canvas) {
     for (var s = 0; s < c.state.seatCount; s++) {
       final corner = c.state.cornerOf(s);
       final o = Board.baseOrigin[corner];
       final color = kCornerStyles[corner].color;
-      final image = AvatarImages.instance.image(seatAvatar(c.config.seats[s]), 128);
-      _watermark(canvas, o, image);
-      final dark = Color.lerp(color, KitColors.inkDark, 0.55)!;
-      for (final e in YardFaceLayout.eyes) {
-        final at = cellToWorld(o[0] + e.dy, o[1] + e.dx, kYardTop + 0.005);
-        if (scene.eyesShut[corner]) {
-          _flatDisc(canvas, at, 0.62, color);
-          canvas.drawLine(
-            scene.camera.project(at + const V3(-0.4, 0, 0)),
-            scene.camera.project(at + const V3(0.4, 0, 0)),
-            Paint()
-              ..color = dark
-              ..strokeWidth = 2.5
-              ..strokeCap = StrokeCap.round,
-          );
-        } else {
-          _flatDisc(canvas, at, 0.66, dark);
-          _flatDisc(canvas, at, 0.56, Colors.white);
-          _flatDisc(canvas, at, 0.34, color);
-          _flatDisc(canvas, at, 0.16, KitColors.inkDark);
-        }
-      }
+      _watermark(canvas, o, AvatarImages.instance.image(seatAvatar(c.config.seats[s]), 128));
       for (final k in YardFaceLayout.cheeks) {
         final at = cellToWorld(o[0] + k.dy, o[1] + k.dx, kYardTop + 0.005);
         _flatDisc(canvas, at, 0.55, color.withValues(alpha: 0.5));
       }
+    }
+  }
+
+  /// Blinking eyes on the top two spots, from shapes worked out once per
+  /// camera angle. Each entry is (corner, shape, paint, shown when shut).
+  void _paintEyes(Canvas canvas) {
+    if (scene.eyes.isEmpty) {
+      for (var s = 0; s < c.state.seatCount; s++) {
+        final corner = c.state.cornerOf(s);
+        final o = Board.baseOrigin[corner];
+        final color = kCornerStyles[corner].color;
+        final dark = Color.lerp(color, KitColors.inkDark, 0.55)!;
+        for (final e in YardFaceLayout.eyes) {
+          final at = cellToWorld(o[0] + e.dy, o[1] + e.dx, kYardTop + 0.005);
+          void disc(double radius, Color tint, bool? shut) =>
+              scene.eyes.add((corner, _circlePath(at, radius), Paint()..color = tint, shut));
+          disc(0.66, dark, false);
+          disc(0.56, Colors.white, false);
+          disc(0.34, color, false);
+          disc(0.16, KitColors.inkDark, false);
+          disc(0.62, color, true);
+          scene.eyes.add((
+            corner,
+            Path()
+              ..moveTo(scene.camera.project(at + const V3(-0.4, 0, 0)).dx, scene.camera.project(at + const V3(-0.4, 0, 0)).dy)
+              ..lineTo(scene.camera.project(at + const V3(0.4, 0, 0)).dx, scene.camera.project(at + const V3(0.4, 0, 0)).dy),
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5
+              ..strokeCap = StrokeCap.round
+              ..color = dark,
+            true,
+          ));
+        }
+      }
+    }
+    for (final (corner, path, paint, shut) in scene.eyes) {
+      if (shut == scene.eyesShut[corner]) canvas.drawPath(path, paint);
     }
   }
 
@@ -632,22 +701,17 @@ class Board3DPainter extends CustomPainter {
     }
   }
 
-  void _paintShadows(Canvas canvas) {
-    final paint = Paint()..color = const Color(0x4D000000);
-    for (final s in scene.tokens.values) {
-      final at = s.motion.position(scene.now);
-      canvas.drawPath(_circlePath(at + const V3(0.08, 0.012, 0.04), 0.42 * s.scale, 12), paint);
-    }
-    final die = scene.die;
-    if (die != null) {
-      final p = die.progress(scene.now);
-      final pose = dieThrowPose(die.value, p, die.seed, die.from, die.rest);
-      final height = DieThrow.height(p);
-      canvas.drawPath(
-        _circlePath(V3(pose.tx + 0.15, die.rest.y + 0.01, pose.tz + 0.1), 0.95 * (1 - 0.4 * height), 14),
-        Paint()..color = Colors.black.withValues(alpha: 0.35 - 0.2 * height),
-      );
-    }
+  /// One pre-rendered soft oval under a creature or the die.
+  void _shadow(Canvas canvas, V3 at, double radius, [double strength = 1]) {
+    if (scene.low) return;
+    final image = CharacterSprites.shadow;
+    final r = scene.camera.pixelsPerUnit(at) * radius;
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Rect.fromCenter(center: scene.camera.project(at + const V3(0.08, 0, 0.04)), width: r * 3, height: r * 1.7),
+      Paint()..color = Color.fromRGBO(0, 0, 0, strength),
+    );
   }
 
   // ------------------------------------------------------------ objects
@@ -658,13 +722,45 @@ class Board3DPainter extends CustomPainter {
     final objects = <(double, void Function())>[];
     final fill = Paint();
 
+    var index = 0;
+    var refreshed = 0;
     for (final entry in scene.tokens.entries) {
       final ref = entry.key;
       final token = entry.value;
       final at = token.motion.position(scene.now);
+      final slot = index++;
+      final cheerUntil = scene.cheering[ref];
+      final live = !token.motion.done(scene.now) ||
+          (cheerUntil != null && scene.now < cheerUntil + 0.6) ||
+          // Still turning back to face the player.
+          scene.now - token.motion.start - token.motion.duration < 0.9;
       objects.add((
         camera.toCamera(at).z,
-        () => _paintCreature(canvas, ref, token, at, fill),
+        () {
+          if (live) {
+            scene.resting.remove(ref)?.picture.dispose();
+            _paintCreature(canvas, ref, token, at, fill);
+            return;
+          }
+          // Resting: replay the picture; redraw it now and then for the idle
+          // motion, only a couple per frame so the cost stays level.
+          final key = (token.motion.to, token.scale, seatAvatar(c.config.seats[ref.seat]));
+          var cached = scene.resting[ref];
+          final stale = cached != null &&
+              !scene.low &&
+              !c.reduceMotion &&
+              scene.now - cached.drawn > 0.33 &&
+              (scene.frame + slot) % 4 == 0 &&
+              refreshed < 2;
+          if (cached == null || cached.key != key || stale) {
+            if (stale) refreshed++;
+            cached?.picture.dispose();
+            final recorder = ui.PictureRecorder();
+            _paintCreature(Canvas(recorder), ref, token, at, fill);
+            cached = scene.resting[ref] = TokenPicture(recorder.endRecording(), key, scene.now);
+          }
+          canvas.drawPicture(cached.picture);
+        },
       ));
     }
 
@@ -676,6 +772,8 @@ class Board3DPainter extends CustomPainter {
         // The die is thrown over everything near it.
         camera.toCamera(V3(pose.tx, pose.ty, pose.tz)).z + 1,
         () {
+          final height = DieThrow.height(die.progress(scene.now));
+          _shadow(canvas, V3(pose.tx, die.rest.y - 0.6, pose.tz), 0.8 * (1 - 0.4 * height), 1 - 0.5 * height);
           final placed = model.centred(pose);
           scene.batch.clear();
           scene.batch.add(model.cube, placed, camera);
@@ -725,7 +823,8 @@ class Board3DPainter extends CustomPainter {
     final heading = moving || since < 0.5 ? token.heading : token.heading * math.max(0, 1 - (since - 0.5) * 3);
 
     final ground = Mat.move(at.x, at.y, at.z);
-    final scale = Mat.scale(1.35 * token.scale);
+    final scale = Mat.scale(kCreatureScale * token.scale);
+    _shadow(canvas, at, 0.42 * token.scale);
     // A flat ring of the player's colour marks the feet.
     canvas.drawPath(_circlePath(at + const V3(0, 0.015, 0), 0.5 * token.scale, 14), Paint()..color = style.color);
     // At rest a cat stands three-quarters on so its body and tail show, and
@@ -741,25 +840,38 @@ class Board3DPainter extends CustomPainter {
 
     // Overlays: a face for the mascot and the shape badge.
     if (model.species == Species3.mascot) {
-      final head = world.apply(model.headPoint(gait, anim) + const V3(0, 0, 0.24));
-      final r = camera.pixelsPerUnit(head) * 0.22 * token.scale;
-      final centre = camera.project(head);
-      final image = AvatarImages.instance.image(choice, 64);
-      canvas.save();
-      canvas.clipPath(Path()..addOval(Rect.fromCircle(center: centre, radius: r)));
+      final head = world.apply(model.headPoint(gait, anim) + const V3(0, 0, 0.27));
+      final r = camera.pixelsPerUnit(head) * kMascotFaceRadius * kCreatureScale * token.scale;
+      final face = _roundFace(choice);
+      final rect = Rect.fromCircle(center: camera.project(head), radius: r);
+      canvas.drawCircle(rect.center, r * 1.1, Paint()..color = KitColors.inkDark);
       canvas.drawImageRect(
-        image,
-        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-        Rect.fromCircle(center: centre, radius: r),
-        Paint(),
+        face,
+        Rect.fromLTWH(0, 0, face.width.toDouble(), face.height.toDouble()),
+        rect,
+        Paint()..filterQuality = FilterQuality.medium,
       );
-      canvas.restore();
     }
     final foot = camera.project(at + V3(-0.3 * token.scale, 0.1, 0.3 * token.scale));
     final r = camera.pixelsPerUnit(at) * 0.17 * token.scale;
     canvas.drawCircle(foot, r + 1.2, Paint()..color = KitColors.inkDark);
     canvas.drawCircle(foot, r, Paint()..color = style.color);
     paintShapeMark(canvas, foot, r * 1.1, style.shape, 1);
+  }
+
+  /// The avatar cut to a circle, once.
+  ui.Image _roundFace(AvatarChoice choice) {
+    final source = AvatarImages.instance.image(choice, 128);
+    return scene.faces.putIfAbsent((choice, source), () {
+      final side = source.width.toDouble();
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)..clipPath(Path()..addOval(Rect.fromLTWH(0, 0, side, side)));
+      canvas.drawImage(source, Offset.zero, Paint());
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(source.width, source.width);
+      picture.dispose();
+      return image;
+    });
   }
 
   void _paintCounts(Canvas canvas) {

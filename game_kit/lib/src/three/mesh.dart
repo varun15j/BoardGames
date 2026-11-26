@@ -112,6 +112,8 @@ class TriangleBatch {
   Float32List _outXy = Float32List(0);
   Int32List _outArgb = Int32List(0);
   int _count = 0;
+  Float64List _camera = Float64List(0);
+  final List<int> _order = [];
 
   /// Triangles that survived culling since the last [clear].
   int get length => _count;
@@ -136,7 +138,8 @@ class TriangleBatch {
   void add(Mesh mesh, Mat world, Camera3 camera) {
     final toView = camera.view * world;
     final pts = mesh.points;
-    final cam = Float64List(pts.length * 3);
+    if (_camera.length < pts.length * 3) _camera = Float64List(pts.length * 6);
+    final cam = _camera;
     for (var i = 0; i < pts.length; i++) {
       final p = pts[i];
       cam[i * 3] = toView.a0 * p.x + toView.a1 * p.y + toView.a2 * p.z + toView.tx;
@@ -179,8 +182,14 @@ class TriangleBatch {
     return (argb & 0xFF000000) | (channel(16) << 16) | (channel(8) << 8) | channel(0);
   }
 
-  /// Triangle numbers ordered far to near.
-  List<int> order() => List<int>.generate(_count, (i) => i)..sort((a, b) => _depth[a].compareTo(_depth[b]));
+  /// Triangle numbers ordered far to near. The list is reused.
+  List<int> order() {
+    _order.clear();
+    for (var i = 0; i < _count; i++) {
+      _order.add(i);
+    }
+    return _order..sort((a, b) => _depth[a].compareTo(_depth[b]));
+  }
 
   void draw(ui.Canvas canvas, ui.Paint paint) {
     if (_count == 0) return;

@@ -187,6 +187,11 @@ double _look(double t) {
   return -0.9 + (phase - 0.88) / 0.12 * 0.9;
 }
 
+/// Height of the middle of the mascot's head, and the radius of the picture
+/// on it (most of the 0.68-wide head).
+const double kMascotHeadHeight = 0.74;
+const double kMascotFaceRadius = 0.29;
+
 /// One solid and where it sits.
 class Part3 {
   const Part3(this.mesh, this.at);
@@ -257,12 +262,12 @@ class CreatureModel {
         _ball('foot', 0.085, 0.032, 0.11, beak, small: true);
         _ball('tailfeather', 0.13, 0.035, 0.16, wing, small: true);
       case Species3.mascot:
-        _ball('body', 0.23, 0.25, 0.19, _color);
-        _ball('head', 0.24, 0.24, 0.22, _white);
-        _ball('eye', 0.04, 0.052, 0.03, _ink, small: true);
-        _rod('leg', 0.065, 0.055, 0.26, _color);
-        _rod('arm', 0.045, 0.04, 0.22, _color);
-        _ball('foot', 0.09, 0.045, 0.12, _ink, small: true);
+        // A big head for the picture on a short, round body.
+        _ball('body', 0.25, 0.2, 0.22, _color);
+        _ball('head', 0.34, 0.33, 0.28, _color);
+        _rod('leg', 0.075, 0.065, 0.2, _color);
+        _rod('arm', 0.055, 0.05, 0.2, _color);
+        _ball('foot', 0.1, 0.05, 0.13, _ink, small: true);
     }
     // The player's collar.
     _rod('collar', species == Species3.frog ? 0.3 : 0.2, species == Species3.frog ? 0.28 : 0.18, 0.07, _color, low ? 6 : 10);
@@ -364,20 +369,16 @@ class CreatureModel {
         put('beak', head * Mat.move(0, -0.06, 0.2) * Mat.rotX(math.pi * 0.7));
       case Species3.mascot:
         for (final (s, angle) in [(-1.0, j.backLeft), (1.0, j.backRight)]) {
-          final hip = limb(s * 0.11, 0.3, 0, angle);
+          final hip = limb(s * 0.12, 0.23, 0, angle);
           put('leg', hip);
-          put('foot', hip * Mat.move(0, 0.27, -0.03));
+          put('foot', hip * Mat.move(0, 0.2, -0.03));
         }
-        put('body', Mat.move(0, 0.49, 0));
-        put('collar', Mat.move(0, 0.64, 0));
+        put('body', Mat.move(0, 0.37, 0));
+        put('collar', Mat.move(0, 0.47, 0));
         for (final (s, angle) in [(-1.0, j.frontLeft), (1.0, j.frontRight)]) {
-          put('arm', Mat.move(s * 0.22, 0.58, 0) * Mat.rotZ(s * (0.45 + j.wings * 0.6)) * Mat.rotX(math.pi - angle));
+          put('arm', Mat.move(s * 0.24, 0.44, 0) * Mat.rotZ(s * (0.55 + j.wings * 0.6)) * Mat.rotX(math.pi - angle));
         }
-        final head = Mat.move(0, 0.9, 0) * Mat.rotY(j.headTurn);
-        put('head', head);
-        for (final s in [-1.0, 1.0]) {
-          put('eye', head * Mat.move(s * 0.085, 0.02, 0.21));
-        }
+        put('head', Mat.move(0, kMascotHeadHeight, 0) * Mat.rotY(j.headTurn));
     }
     return out;
   }
@@ -385,9 +386,9 @@ class CreatureModel {
   int get triangleCount =>
       pose(Gait3.walker, const Anim3()).fold(0, (n, part) => n + part.mesh.triangleCount);
 
-  /// Where the head is, for overlays such as a mascot's face.
+  /// Where the mascot's head is, for the picture drawn on it.
   V3 headPoint(Gait3 gait, Anim3 anim) {
     final body = bodyMotion(gait, anim);
-    return V3(0, body.lift + 0.9 * body.stretch, 0);
+    return V3(0, body.lift + kMascotHeadHeight * body.stretch, 0);
   }
 }

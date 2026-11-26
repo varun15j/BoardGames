@@ -232,7 +232,7 @@ class _GameScreenState extends State<GameScreen> {
                       _podRow([0, 1]),
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: EdgeInsets.symmetric(horizontal: _view3d ? 0 : 12, vertical: _view3d ? 0 : 4),
                           child: Center(
                             child: _view3d
                                 ? Board3DView(
