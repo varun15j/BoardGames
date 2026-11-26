@@ -11,6 +11,7 @@ class LudoStorage {
   static const _saveKey = 'ludo.save';
   static const _soundKey = 'ludo.sound';
   static const _hapticsKey = 'ludo.haptics';
+  static const _view3dKey = 'ludo.view3d';
 
   Future<GameState?> loadSave() async {
     try {
@@ -35,6 +36,23 @@ class LudoStorage {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_saveKey);
+    } catch (_) {}
+  }
+
+  /// Whether the player last chose the 3D board. 2D until they do.
+  Future<bool> loadView3d() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_view3dKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> saveView3d(bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_view3dKey, value);
     } catch (_) {}
   }
 

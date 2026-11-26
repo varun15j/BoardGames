@@ -8,7 +8,16 @@ enum PauseChoice { resume, saveAndExit, leave }
 
 /// Pause dialog: resume, sound and haptics, rules, save and exit, leave.
 class PauseMenu extends StatefulWidget {
-  const PauseMenu({super.key, required this.controller, required this.onSettingsChanged, required this.graphics});
+  const PauseMenu({
+    super.key,
+    required this.controller,
+    required this.onSettingsChanged,
+    required this.graphics,
+    required this.view3d,
+    required this.onViewChanged,
+  });
+  final bool view3d;
+  final ValueChanged<bool> onViewChanged;
   final LudoController controller;
   final GraphicsSettings graphics;
   final VoidCallback onSettingsChanged;
@@ -18,6 +27,8 @@ class PauseMenu extends StatefulWidget {
 }
 
 class _PauseMenuState extends State<PauseMenu> {
+  late bool _view3d = widget.view3d;
+
   LudoController get c => widget.controller;
 
   @override
@@ -45,6 +56,18 @@ class _PauseMenuState extends State<PauseMenu> {
                   c.hapticsOn = v;
                   widget.onSettingsChanged();
                 })),
+            const SizedBox(height: 12),
+            Text('Board view', style: KitTheme.body(size: 13, weight: FontWeight.w800, color: KitColors.muted)),
+            const SizedBox(height: 6),
+            SegmentedPills<bool>(
+              options: const [false, true],
+              value: _view3d,
+              labelOf: (v) => v ? '3D board' : '2D board',
+              onChanged: (v) {
+                setState(() => _view3d = v);
+                widget.onViewChanged(v);
+              },
+            ),
             const SizedBox(height: 12),
             GraphicsSelector(settings: widget.graphics),
             const SizedBox(height: 12),

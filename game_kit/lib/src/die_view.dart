@@ -23,6 +23,7 @@ class DieView extends StatefulWidget {
     this.tilt,
     this.quality = GraphicsQuality.optimized,
     this.reduceMotion = false,
+    this.hideFace = false,
     this.size = 78,
     this.throwHeight = 220,
     this.duration,
@@ -45,6 +46,9 @@ class DieView extends StatefulWidget {
   final ValueListenable<Offset>? tilt;
   final GraphicsQuality quality;
   final bool reduceMotion;
+
+  /// Shows only the empty dock (flat quality), while the die is elsewhere.
+  final bool hideFace;
   final double size;
   final double throwHeight;
 
@@ -176,10 +180,12 @@ class DieViewState extends State<DieView> with TickerProviderStateMixin {
             BoxShadow(color: widget.color.withValues(alpha: 0.7 * (1 - glow)), spreadRadius: 10 * glow),
         ],
       ),
-      child: Transform.rotate(
-        angle: spin,
-        child: CustomPaint(size: Size.square(size * 0.7), painter: DiePainter(shownFace, widget.color)),
-      ),
+      child: widget.hideFace
+          ? null
+          : Transform.rotate(
+              angle: spin,
+              child: CustomPaint(size: Size.square(size * 0.7), painter: DiePainter(shownFace, widget.color)),
+            ),
     );
   }
 
