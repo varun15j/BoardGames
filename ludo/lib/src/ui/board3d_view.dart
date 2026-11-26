@@ -263,7 +263,7 @@ class Board3DViewState extends State<Board3DView> with SingleTickerProviderState
   }
 
   void _tap(Offset at) {
-    if (!c.humanToPick) return;
+    if (!c.canPickHere) return;
     int? best;
     var nearest = double.infinity;
     for (final token in c.movable) {

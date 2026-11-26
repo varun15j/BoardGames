@@ -87,12 +87,23 @@ class LudoController extends ChangeNotifier {
     this.soundOn = true,
     this.hapticsOn = true,
     this.reduceMotion = false,
+    this.localSeats,
+    this.handoffs = true,
   })  : state = state,
         _rng = random ?? Random(),
         display = [for (final r in state.steps) List<int>.of(r)],
         notes = List.filled(state.seatCount, '');
 
   final GameState state;
+
+  /// Seats played on this phone; null means every human seat (one phone).
+  final Set<int>? localSeats;
+
+  /// Whether to show "pass to" cards between players sharing a phone.
+  final bool handoffs;
+
+  /// Seats of players who dropped out and are now played by a bot.
+  final Set<int> takenOver = {};
   final Random _rng;
   final GameTiming timing;
   final int turnSeconds;
@@ -137,8 +148,19 @@ class LudoController extends ChangeNotifier {
 
   MatchConfig get config => state.config;
   SeatConfig get currentSeat => config.seats[state.turn];
-  bool get humanToRoll => phase == TurnPhase.awaitingRoll && !currentSeat.isBot;
-  bool get humanToPick => phase == TurnPhase.choosing && !currentSeat.isBot;
+  bool seatIsBot(int seat) => config.seats[seat].isBot || takenOver.contains(seat);
+  bool get _botTurn => seatIsBot(state.turn);
+  bool isLocal(int seat) => localSeats?.contains(seat) ?? true;
+  bool get humanToRoll => phase == TurnPhase.awaitingRoll && !_botTurn;
+  bool get humanToPick => phase == TurnPhase.choosing && !_botTurn;
+
+  /// The die and tokens respond to taps on this phone.
+  bool get canRollHere => humanToRoll && isLocal(state.turn);
+  bool get canPickHere => humanToPick && isLocal(state.turn);
+
+  /// How long the current turn timer was set to, and what is left of it.
+  int get timerTotalMs => _totalMs;
+  int get timerLeftMs => _ticker == null ? 0 : _leftMs;
   double get _motion => reduceMotion ? 0.3 : 1;
 
   /// Begins (or resumes) play from the current state.
@@ -160,7 +182,7 @@ class LudoController extends ChangeNotifier {
       notes[i] = i == seat ? '' : (state.finishOrder.contains(i) ? 'Finished' : 'Waiting');
     }
     onSave?.call(state);
-    final needsHandoff = config.humanCount > 1 && !currentSeat.isBot && _lastActiveSeat != seat;
+    final needsHandoff = handoffs && config.humanCount > 1 && !_botTurn && _lastActiveSeat != seat;
     _lastActiveSeat = seat;
     if (needsHandoff) {
       phase = TurnPhase.handoff;
@@ -182,7 +204,7 @@ class LudoController extends ChangeNotifier {
     phase = TurnPhase.awaitingRoll;
     movable = const [];
     ghosts = const [];
-    if (currentSeat.isBot) {
+    if (_botTurn) {
       status = '${currentSeat.name} is rolling…';
       notes[state.turn] = 'Rolling';
       notifyListeners();
@@ -199,7 +221,44 @@ class LudoController extends ChangeNotifier {
 
   /// The human taps the die.
   void rollTapped() {
-    if (humanToRoll && !_paused) _roll();
+    if (canRollHere && !_paused) _roll();
+  }
+
+  /// A remote player asks to roll. Returns false when it is not allowed.
+  bool remoteRoll(int seat) {
+    if (seat != state.turn || !humanToRoll || _paused) return false;
+    _roll();
+    return true;
+  }
+
+  /// A remote player asks to move [token].
+  bool remotePick(int seat, int token) {
+    if (seat != state.turn || !humanToPick || _paused || !movable.contains(token)) return false;
+    _stopTimer();
+    _move(token, _gen);
+    return true;
+  }
+
+  /// Hands a dropped player's seat to a bot, which plays at once if it is
+  /// their turn.
+  void takeOver(int seat) {
+    if (!takenOver.add(seat) || seat != state.turn) {
+      notifyListeners();
+      return;
+    }
+    if (phase == TurnPhase.awaitingRoll) {
+      _stopTimer();
+      _roll();
+    } else if (phase == TurnPhase.choosing) {
+      _stopTimer();
+      _move(LudoBot.best(state, movable, state.lastRoll!), _gen);
+    }
+    notifyListeners();
+  }
+
+  /// The player is back in their seat.
+  void giveBack(int seat) {
+    if (takenOver.remove(seat)) notifyListeners();
   }
 
   Future<void> _roll() async {
@@ -242,7 +301,7 @@ class LudoController extends ChangeNotifier {
   Future<void> _chooseMove(int g, int roll) async {
     final moves = Rules.legalMoves(state, roll);
     final seat = currentSeat;
-    if (seat.isBot) {
+    if (_botTurn) {
       notifyListeners();
       await _wait(450);
       if (g != _gen) return;
@@ -276,7 +335,7 @@ class LudoController extends ChangeNotifier {
 
   /// The human taps a glowing token.
   void selectToken(int token) {
-    if (!humanToPick || _paused || !movable.contains(token)) return;
+    if (!canPickHere || _paused || !movable.contains(token)) return;
     _stopTimer();
     _move(token, _gen);
   }
@@ -377,8 +436,8 @@ class LudoController extends ChangeNotifier {
     }
 
     final v = victims.first.seat;
-    if (config.seats[v].isBot) later(300, v, '😮');
-    if (config.seats[by].isBot) later(700, by, '🔥');
+    if (seatIsBot(v)) later(300, v, '😮');
+    if (seatIsBot(by)) later(700, by, '🔥');
   }
 
   BoardPoint _pointFor(int seat, int token, int step) =>
@@ -446,6 +505,9 @@ class LudoController extends ChangeNotifier {
   void _emit(LudoEvent e) {
     if (!_disposed) _events.add(e);
   }
+
+  /// Replays an event that happened on the host.
+  void emitRemote(LudoEvent e) => _emit(e);
 
   void _feedback({required bool heavy}) {
     if (hapticsOn) {

@@ -15,7 +15,11 @@ class PauseMenu extends StatefulWidget {
     required this.graphics,
     required this.view3d,
     required this.onViewChanged,
+    this.networked = false,
   });
+
+  /// A Wi-Fi match cannot be saved.
+  final bool networked;
   final bool view3d;
   final ValueChanged<bool> onViewChanged;
   final LudoController controller;
@@ -76,12 +80,14 @@ class _PauseMenuState extends State<PauseMenu> {
               icon: Icons.help_outline_rounded,
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const HowToPlayScreen())),
             ),
-            const SizedBox(height: 10),
-            SoftButton(
-              label: 'Save & exit',
-              icon: Icons.save_alt_rounded,
-              onPressed: () => Navigator.pop(context, PauseChoice.saveAndExit),
-            ),
+            if (!widget.networked) ...[
+              const SizedBox(height: 10),
+              SoftButton(
+                label: 'Save & exit',
+                icon: Icons.save_alt_rounded,
+                onPressed: () => Navigator.pop(context, PauseChoice.saveAndExit),
+              ),
+            ],
             const SizedBox(height: 10),
             SoftButton(
               label: 'Leave match',
