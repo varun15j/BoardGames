@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -126,6 +127,7 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
           direction: Offset(to.col - from.col, to.row - from.row),
           stepNumber: number,
           color: Color.lerp(color, KitColors.inkDark, 0.35)!,
+          kind: _printFor(seat),
         );
       case ReactionEvent():
         break;
@@ -134,7 +136,8 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    final board = _board();
+    // A tilt tick only moves this finished layer; nothing inside repaints.
+    final board = RepaintBoundary(child: _board());
     final tilt = widget.tilt;
     if (!_optimized || tilt == null) return board;
     // Only the transform changes with each sensor tick; the board is reused.
@@ -190,14 +193,24 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
                 builder: (context, _) => Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Positioned.fill(child: RepaintBoundary(child: CustomPaint(painter: BoardPainter()))),
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: BoardPainter(ratio: MediaQuery.devicePixelRatioOf(context)),
+                        ),
+                      ),
+                    ),
                     ..._yards(u),
                     // Prints sit under the pieces.
                     Positioned.fill(
                       child: FootprintLayer(key: _footprints, unit: u, quality: widget.quality),
                     ),
                     for (final g in c.ghosts) _ghost(g, u),
-                    ..._tokens(u),
+                    // Shadows slide one way as the phone tilts, pieces the
+                    // other; each is a single layer move.
+                    if (_optimized) _parallax(u * -0.2, Stack(clipBehavior: Clip.none, children: _shadows(u))),
+                    _parallax(u * 0.1, Stack(clipBehavior: Clip.none, children: _tokens(u))),
+                    ..._countBadges(u),
                     for (final fx in _fx) fx.builder(u, fx.key),
                   ],
                 ),
@@ -207,6 +220,11 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
         ),
       ),
     );
+  }
+
+  FootprintKind _printFor(int seat) {
+    final avatar = seatAvatar(c.config.seats[seat]);
+    return avatar.isPhoto ? FootprintKind.shoe : creatureFor(avatar.avatar).print;
   }
 
   /// A living face in each player's yard, behind the token spots.
@@ -254,7 +272,81 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
     );
   }
 
-  List<Widget> _tokens(double u) {
+  /// Moves [child] by the tilt times [distance] without repainting it.
+  Widget _parallax(double distance, Widget child) {
+    final tilt = widget.tilt;
+    final layer = RepaintBoundary(child: child);
+    if (!_optimized || tilt == null) return Positioned.fill(child: layer);
+    return Positioned.fill(
+      child: ValueListenableBuilder<Offset>(
+        valueListenable: tilt,
+        child: layer,
+        builder: (context, t, child) => Transform.translate(offset: t * distance, child: child),
+      ),
+    );
+  }
+
+  /// A number on squares crowded with three or more tokens.
+  List<Widget> _countBadges(double u) {
+    final counts = <BoardPoint, int>{};
+    for (var s = 0; s < c.state.seatCount; s++) {
+      for (var t = 0; t < c.state.tokenCount; t++) {
+        final step = c.display[s][t];
+        if (step < 0 || step == Board.homeStep) continue;
+        counts.update(c.displayPoint(s, t), (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
+    return [
+      for (final e in counts.entries)
+        if (showCountBadge(e.value))
+          Positioned(
+            left: e.key.col * u + u * 0.18,
+            top: e.key.row * u - u * 0.74,
+            width: u * 0.62,
+            height: u * 0.62,
+            child: IgnorePointer(
+              child: Container(
+                key: ValueKey('count-${e.key.row}-${e.key.col}'),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: KitColors.gold,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: KitColors.inkDark, width: 1.5),
+                ),
+                child: Text(
+                  '${e.value}',
+                  style: KitTheme.body(size: u * 0.4, weight: FontWeight.w800, color: KitColors.goldInk),
+                ),
+              ),
+            ),
+          ),
+    ];
+  }
+
+  List<Widget> _shadows(double u) {
+    return [
+      for (final p in _placements(u))
+        AnimatedPositioned(
+          key: ValueKey('shadow-${p.seat}-${p.token}'),
+          duration: p.duration,
+          curve: p.curve,
+          left: p.left,
+          top: p.top,
+          width: p.box,
+          height: p.box,
+          child: Center(
+            child: OverflowBox(
+              maxWidth: CharacterToken.boxFor(p.size),
+              maxHeight: CharacterToken.boxFor(p.size),
+              child: CharacterShadow(size: p.size),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// Where every token is drawn and how it travels there.
+  List<_Placement> _placements(double u) {
     // Group tokens that share a drawn cell so they fan out instead of hiding.
     final entries = <({int seat, int token, BoardPoint p})>[];
     for (var s = 0; s < c.state.seatCount; s++) {
@@ -266,52 +358,103 @@ class _BoardViewState extends State<BoardView> with SingleTickerProviderStateMix
     for (var i = 0; i < entries.length; i++) {
       groups.putIfAbsent(entries[i].p, () => []).add(i);
     }
-    final widgets = <(int, Widget)>[];
+    final placements = <_Placement>[];
     for (final e in entries) {
       final idx = entries.indexOf(e);
       final group = groups[e.p]!;
       final home = c.display[e.seat][e.token] == Board.homeStep;
       final fan = group.length > 1 && !home;
-      final a = group.indexOf(idx) / group.length * math.pi * 2;
-      final dx = fan ? math.cos(a) * 0.22 : 0.0;
-      final dy = fan ? math.sin(a) * 0.22 : 0.0;
+      final spot = fan ? clusterOffsets(group.length)[group.indexOf(idx)] : Offset.zero;
+      final dx = spot.dx;
+      // Stand the creature's feet a little below the middle of the square.
+      final dy = spot.dy - 0.1;
       final isMovable = e.seat == c.state.turn && c.movable.contains(e.token) && c.humanToPick;
-      final ref = TokenRef(e.seat, e.token);
-      final fly = c.flying.contains(ref);
-      final style = kCornerStyles[c.state.cornerOf(e.seat)];
+      final fly = c.flying.contains(TokenRef(e.seat, e.token));
       final box = u * 1.9;
-      final tokenSize = u * (home ? 0.58 : 0.95) * (fan ? 0.82 : 1);
-      widgets.add((
-        isMovable ? 3 : (fly ? 2 : (home ? 0 : 1)),
-        AnimatedPositioned(
-          key: ValueKey('token-${e.seat}-${e.token}'),
-          duration: Duration(milliseconds: c.reduceMotion ? 40 : (fly ? 550 : LudoController.stepMs - 20)),
-          curve: fly ? Curves.easeInBack : Curves.easeInOut,
-          left: (e.p.col + dx) * u - box / 2,
-          top: (e.p.row + dy) * u - box / 2,
-          width: box,
-          height: box,
-          child: TokenView(
-            quality: widget.quality,
-            tilt: widget.tilt,
-            color: style.color,
-            shape: style.shape,
-            avatar: seatAvatar(c.config.seats[e.seat]),
-            dizzy: fly,
-            home: home,
-            size: tokenSize,
-            step: c.display[e.seat][e.token],
-            movable: isMovable,
-            reduceMotion: c.reduceMotion,
-            semanticsLabel: '${c.config.seats[e.seat].name} token ${e.token + 1}',
-            onTap: isMovable ? () => c.selectToken(e.token) : null,
-          ),
-        ),
+      placements.add(_Placement(
+        seat: e.seat,
+        token: e.token,
+        order: isMovable ? 3 : (fly ? 2 : (home ? 0 : 1)),
+        movable: isMovable,
+        flying: fly,
+        home: home,
+        size: u * (home ? 0.58 : 0.92) * (fan ? clusterScale(group.length) : 1),
+        ringSize: u * 1.7,
+        box: box,
+        left: (e.p.col + dx) * u - box / 2,
+        top: (e.p.row + dy) * u - box / 2,
+        duration: Duration(milliseconds: c.reduceMotion ? 40 : (fly ? 550 : LudoController.stepMs - 20)),
+        curve: fly ? Curves.easeInBack : Curves.easeInOut,
       ));
     }
-    widgets.sort((a, b) => a.$1.compareTo(b.$1));
-    return [for (final w in widgets) w.$2];
+    return placements..sort((a, b) => a.order.compareTo(b.order));
   }
+
+  List<Widget> _tokens(double u) {
+    return [
+      for (final p in _placements(u))
+        () {
+          final style = kCornerStyles[c.state.cornerOf(p.seat)];
+          return AnimatedPositioned(
+            key: ValueKey('token-${p.seat}-${p.token}'),
+            duration: p.duration,
+            curve: p.curve,
+            left: p.left,
+            top: p.top,
+            width: p.box,
+            height: p.box,
+            child: RepaintBoundary(
+              child: TokenView(
+                quality: widget.quality,
+                color: style.color,
+                shape: style.shape,
+                avatar: seatAvatar(c.config.seats[p.seat]),
+                dizzy: p.flying,
+                home: p.home,
+                size: p.size,
+                ringSize: p.ringSize,
+                step: c.display[p.seat][p.token],
+                movable: p.movable,
+                reduceMotion: c.reduceMotion,
+                semanticsLabel: '${c.config.seats[p.seat].name} token ${p.token + 1}',
+                onTap: p.movable ? () => c.selectToken(p.token) : null,
+              ),
+            ),
+          );
+        }(),
+    ];
+  }
+}
+
+class _Placement {
+  _Placement({
+    required this.seat,
+    required this.token,
+    required this.order,
+    required this.movable,
+    required this.flying,
+    required this.home,
+    required this.size,
+    required this.ringSize,
+    required this.box,
+    required this.left,
+    required this.top,
+    required this.duration,
+    required this.curve,
+  });
+  final int seat;
+  final int token;
+  final int order;
+  final bool movable;
+  final bool flying;
+  final bool home;
+  final double size;
+  final double ringSize;
+  final double box;
+  final double left;
+  final double top;
+  final Duration duration;
+  final Curve curve;
 }
 
 /// A token with hop, halo and bob animations.
@@ -324,17 +467,16 @@ class TokenView extends StatefulWidget {
     this.dizzy = false,
     this.home = false,
     required this.size,
+    this.ringSize,
     required this.step,
     required this.movable,
     required this.reduceMotion,
     this.quality = GraphicsQuality.performance,
-    this.tilt,
     this.onTap,
     this.semanticsLabel,
   });
 
   final GraphicsQuality quality;
-  final ValueListenable<Offset>? tilt;
 
   final Color color;
   final PlayerShape shape;
@@ -344,6 +486,9 @@ class TokenView extends StatefulWidget {
   final bool dizzy;
   final bool home;
   final double size;
+
+  /// The move ring stays large so a small creature is still easy to tap.
+  final double? ringSize;
   final int step;
   final bool movable;
   final bool reduceMotion;
@@ -420,7 +565,11 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
                 clipBehavior: Clip.none,
                 children: [
                   if (widget.movable)
-                    MoveRing(size: s * 1.8, quality: widget.quality, reduceMotion: widget.reduceMotion),
+                    MoveRing(
+                      size: widget.ringSize ?? s * 1.8,
+                      quality: widget.quality,
+                      reduceMotion: widget.reduceMotion,
+                    ),
                   Transform.translate(
                     offset: Offset(0, bob - s * 0.85 * h),
                     child: Transform(
@@ -444,7 +593,6 @@ class _TokenViewState extends State<TokenView> with TickerProviderStateMixin {
                           pose: legPose(_hop.value, _leftLeads, flat: widget.quality == GraphicsQuality.performance),
                           dizzy: widget.dizzy,
                           flat: widget.quality == GraphicsQuality.performance,
-                          tilt: widget.tilt,
                         ),
                       ),
                     ),
@@ -652,11 +800,37 @@ class _Banner extends StatelessWidget {
 
 /// Paints the static board: bases, loop tiles, stars, home lanes, centre.
 class BoardPainter extends CustomPainter {
+  BoardPainter({this.ratio = 1});
+  final double ratio;
+
+  static final Map<int, ui.Image> _cache = {};
+
   static const tileOutline = Color(0xFF6B7896);
   static const starColor = Color(0xFF27324F);
 
+  /// The board never changes, so it is drawn once per size and then copied.
   @override
   void paint(Canvas canvas, Size size) {
+    final px = (size.width * ratio).ceil();
+    final image = _cache.putIfAbsent(px, () {
+      if (_cache.length > 4) _cache.clear();
+      final recorder = ui.PictureRecorder();
+      final offscreen = Canvas(recorder)..scale(px / size.width);
+      _draw(offscreen, size);
+      final picture = recorder.endRecording();
+      final result = picture.toImageSync(px, px);
+      picture.dispose();
+      return result;
+    });
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Offset.zero & size,
+      Paint()..filterQuality = FilterQuality.low,
+    );
+  }
+
+  void _draw(Canvas canvas, Size size) {
     final u = size.width / Board.size;
     Rect cell(num r, num c, [double inset = 1]) =>
         Rect.fromLTWH(c * u + inset, r * u + inset, u - inset * 2, u - inset * 2);
@@ -755,5 +929,5 @@ class BoardPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(BoardPainter old) => false;
+  bool shouldRepaint(BoardPainter old) => old.ratio != ratio;
 }

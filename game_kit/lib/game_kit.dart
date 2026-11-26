@@ -8,6 +8,8 @@ export 'src/avatars/avatar_store.dart';
 export 'src/avatars/catalog.dart';
 export 'src/avatars/profile.dart';
 export 'src/characters.dart';
+export 'src/creatures.dart';
+export 'src/token_cluster.dart';
 export 'src/yard_face.dart';
 export 'src/night_background.dart';
 export 'src/buttons.dart';

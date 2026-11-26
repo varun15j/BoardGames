@@ -16,6 +16,7 @@ Future<Uint8List> _png(int w, int h) async {
 }
 
 void main() {
+  creatureTests();
   setUp(() {
     KitTheme.useGoogleFonts = false;
     SharedPreferences.setMockInitialValues({});
@@ -204,6 +205,61 @@ void main() {
       ));
       expect(find.byType(CharacterToken), findsNWidgets(4));
       expect(tester.takeException(), isNull);
+    });
+  });
+}
+
+void creatureTests() {
+  group('creatures', () {
+    test('every avatar has a token body and a way of moving', () {
+      for (final a in kAvatars) {
+        expect(creatureFor(a).shapes, isNotEmpty, reason: a.id);
+        expect(Locomotion.values, contains(locomotionFor(a)));
+      }
+      expect({for (final a in kAvatars) locomotionFor(a)}, Locomotion.values.toSet());
+    });
+
+    test('animals are the whole animal, not a head on a person', () {
+      for (final a in avatarsIn(AvatarCategory.animals)) {
+        expect(identical(creatureFor(a).shapes, a.shapes), isFalse, reason: a.id);
+        expect(locomotionFor(a), isNot(Locomotion.walker), reason: a.id);
+      }
+      expect(locomotionFor(kAvatarsById['frog']!), Locomotion.hopper);
+      expect(locomotionFor(kAvatarsById['cat']!), Locomotion.quadruped);
+      expect(locomotionFor(kAvatarsById['owl']!), Locomotion.waddler);
+      expect(locomotionFor(kAvatarsById['rocket']!), Locomotion.floater);
+      for (final a in avatarsIn(AvatarCategory.people)) {
+        expect(locomotionFor(a), Locomotion.walker);
+      }
+    });
+
+    test('footprints match the creature', () {
+      expect(creatureFor(kAvatarsById['cat']!).print, FootprintKind.paw);
+      expect(creatureFor(kAvatarsById['dog']!).print, FootprintKind.paw);
+      expect(creatureFor(kAvatarsById['frog']!).print, FootprintKind.webbed);
+      expect(creatureFor(kAvatarsById['pizza']!).print, FootprintKind.dot);
+      expect(creatureFor(kAvatarsById['chef']!).print, FootprintKind.shoe);
+    });
+
+    testWidgets('the same avatar for two players gives different tokens', (tester) async {
+      const cat = AvatarChoice('cat');
+      final red = CharacterSprites.body(cat, KitColors.coral, PlayerShape.circle, 24, 2, false);
+      final teal = CharacterSprites.body(cat, KitColors.teal, PlayerShape.square, 24, 2, false);
+      expect(identical(red, teal), isFalse);
+      expect(identical(red, CharacterSprites.body(cat, KitColors.coral, PlayerShape.circle, 24, 2, false)), isTrue);
+    });
+
+    test('crowded squares form a tidy cluster with a count from three', () {
+      expect(clusterOffsets(1), [Offset.zero]);
+      for (var n = 2; n <= 8; n++) {
+        final spots = clusterOffsets(n);
+        expect(spots.length, n);
+        expect(spots.toSet().length, n, reason: '$n tokens must not hide each other');
+        expect(spots.every((s) => s.dx.abs() <= 0.3 && s.dy.abs() <= 0.3), isTrue);
+        expect(clusterScale(n), lessThan(1));
+      }
+      expect(showCountBadge(2), isFalse);
+      expect(showCountBadge(3), isTrue);
     });
   });
 }

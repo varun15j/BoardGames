@@ -269,7 +269,8 @@ class _GameScreenState extends State<GameScreen> {
       final active = c.state.turn == seat && c.phase != TurnPhase.over;
       final reaction = _reactions[seat];
       final right = corner == 1 || corner == 2;
-      return ValueListenableBuilder<double>(
+      return RepaintBoundary(
+        child: ValueListenableBuilder<double>(
         valueListenable: c.timerFraction,
         builder: (context, fraction, _) => PlayerPod(
           name: s.name,
@@ -284,6 +285,7 @@ class _GameScreenState extends State<GameScreen> {
           reactionId: reaction?.$2 ?? 0,
           reduceMotion: c.reduceMotion,
           portrait: AvatarView(choice: seatAvatar(s), size: 36),
+        ),
         ),
       );
     }

@@ -40,6 +40,7 @@ class _SetupScreenState extends State<SetupScreen> {
   void initState() {
     super.initState();
     _seats = _build(_players, const []);
+    AvatarImages.instance.prewarm([for (final seat in _seats) seatAvatar(seat)]);
   }
 
   List<SeatConfig> _build(int count, List<SeatConfig> old) {

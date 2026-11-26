@@ -46,12 +46,23 @@ class YardFaceLayout {
   static const cheeks = [Offset(2, 4), Offset(4, 4)];
 }
 
+/// Yard pictures already drawn, one per colour, avatar, glance and blink.
+final Map<(int, ui.Image, int, int, int, bool), ui.Image> _yardCache = {};
+
 /// The living face painted in a yard: the avatar as a faint watermark, two
 /// blinking eyes in the player's colour on the top spots, cheeks and a smile
 /// on the bottom ones. The canvas is the whole 6x6 yard.
 class YardFacePainter extends CustomPainter {
-  YardFacePainter({required this.color, required this.image, required this.closed, this.look = Offset.zero})
-      : super(repaint: closed);
+  YardFacePainter({
+    required this.color,
+    required this.image,
+    required this.closed,
+    this.look = Offset.zero,
+    this.ratio = 1,
+  }) : super(repaint: closed);
+
+  /// Device pixel ratio the cached picture is rendered at.
+  final double ratio;
 
   static const watermarkOpacity = 0.3;
 
@@ -62,8 +73,37 @@ class YardFacePainter extends CustomPainter {
   /// Where the pupils glance, each axis -1..1.
   final Offset look;
 
+  /// Copies the cached picture; it is only drawn the first time.
   @override
   void paint(Canvas canvas, Size size) {
+    final px = (size.width * ratio).ceil();
+    final key = (
+      color.toARGB32(),
+      image,
+      px,
+      (look.dx * 2).round(),
+      (look.dy * 2).round(),
+      closed.value,
+    );
+    final cached = _yardCache.putIfAbsent(key, () {
+      if (_yardCache.length > 64) _yardCache.clear();
+      final recorder = ui.PictureRecorder();
+      final offscreen = Canvas(recorder)..scale(px / size.width);
+      _draw(offscreen, size);
+      final picture = recorder.endRecording();
+      final result = picture.toImageSync(px, px);
+      picture.dispose();
+      return result;
+    });
+    canvas.drawImageRect(
+      cached,
+      Rect.fromLTWH(0, 0, cached.width.toDouble(), cached.height.toDouble()),
+      Offset.zero & size,
+      Paint()..filterQuality = FilterQuality.low,
+    );
+  }
+
+  void _draw(Canvas canvas, Size size) {
     final u = size.width / YardFaceLayout.yardCells;
     // Matches the white panel the board paints inside each yard.
     final inner = (Offset.zero & size).deflate(2).deflate(YardFaceLayout.inset * u);
@@ -117,7 +157,8 @@ class YardFacePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(YardFacePainter old) => old.color != color || old.image != image || old.look != look;
+  bool shouldRepaint(YardFacePainter old) =>
+      old.color != color || old.image != image || old.look != look || old.ratio != ratio;
 }
 
 /// A [YardFacePainter] for a choice of avatar.
@@ -141,7 +182,9 @@ class YardFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pixels = size * (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1);
+    final screen = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    final ratio = flat ? math.min(screen, 2.0) : screen;
+    final pixels = size * ratio;
     return RepaintBoundary(
       child: ListenableBuilder(
         listenable: AvatarImages.instance,
@@ -152,6 +195,7 @@ class YardFace extends StatelessWidget {
             image: AvatarImages.instance.image(avatar, flat ? 128 : pixels),
             closed: closed,
             look: look,
+            ratio: ratio,
           ),
         ),
       ),

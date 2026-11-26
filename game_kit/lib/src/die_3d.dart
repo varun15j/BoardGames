@@ -14,6 +14,12 @@ class Vec3 {
   Vec3 operator *(double s) => Vec3(x * s, y * s, z * s);
   double dot(Vec3 o) => x * o.x + y * o.y + z * o.z;
   Vec3 cross(Vec3 o) => Vec3(y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x);
+
+  @override
+  bool operator ==(Object other) => other is Vec3 && other.x == x && other.y == y && other.z == z;
+  @override
+  int get hashCode => Object.hash(x, y, z);
+
   Vec3 normalized() {
     final l = math.sqrt(dot(this));
     return l == 0 ? this : this * (1 / l);
@@ -39,6 +45,11 @@ class Rot3 {
   }
 
   Vec3 apply(Vec3 v) => Vec3(r0.dot(v), r1.dot(v), r2.dot(v));
+
+  @override
+  bool operator ==(Object other) => other is Rot3 && other.r0 == r0 && other.r1 == r1 && other.r2 == r2;
+  @override
+  int get hashCode => Object.hash(r0, r1, r2);
 
   /// This rotation applied after [o].
   Rot3 after(Rot3 o) {

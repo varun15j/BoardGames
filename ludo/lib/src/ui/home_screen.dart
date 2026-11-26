@@ -26,7 +26,12 @@ class _LudoHomeScreenState extends State<LudoHomeScreen> {
   void initState() {
     super.initState();
     GraphicsSettings.instance.ensureLoaded();
-    PlayerProfile.instance.ensureLoaded();
+    PlayerProfile.instance.ensureLoaded().then((_) {
+      AvatarImages.instance.prewarm([
+        PlayerProfile.instance.choice,
+        for (final id in kDefaultCornerAvatars) AvatarChoice(id),
+      ]);
+    });
     _refresh();
   }
 

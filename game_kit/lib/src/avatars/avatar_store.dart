@@ -78,6 +78,16 @@ class AvatarImages extends ChangeNotifier {
     return _vector(choice.avatar, px);
   }
 
+  /// Renders pictures ahead of time, so a match's first frame has none to
+  /// draw or decode.
+  void prewarm(Iterable<AvatarChoice> choices) {
+    for (final choice in choices) {
+      for (final size in sizes) {
+        image(choice, size.toDouble());
+      }
+    }
+  }
+
   /// True once a photo could not be read.
   bool failed(AvatarChoice choice, double pixels) => _failed.contains('p:${choice.photoPath}:${bucket(pixels)}');
 

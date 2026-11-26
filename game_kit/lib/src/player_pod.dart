@@ -50,9 +50,11 @@ class PlayerPod extends StatelessWidget {
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          CustomPaint(
-            size: const Size(46, 46),
-            painter: TimerRingPainter(fraction: active ? (timerFraction ?? 0) : 0, color: color),
+          RepaintBoundary(
+            child: CustomPaint(
+              size: const Size(46, 46),
+              painter: TimerRingPainter(fraction: active ? (timerFraction ?? 0) : 0, color: color),
+            ),
           ),
           portrait ?? InitialDisc(color: color, letter: name.isEmpty ? '?' : name.characters.first.toUpperCase(), size: 36),
           if (reactionEmoji != null)

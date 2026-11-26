@@ -75,7 +75,19 @@ Pieces that can move are circled by a turning ring (`MoveRing`), and a walking p
 
 60 original avatars drawn in code, in six categories (Animals, People, Fantasy, Space, Food, Sports), live in `game_kit`. A player can use a gallery photo instead: it is cropped to 256 px, kept only in the app's private storage, excluded from Android backups and never uploaded.
 
-Each yard shows its player's avatar as a faint watermark with a face: the top two token spots are blinking eyes in the player's colour and the bottom two are cheeks. Tokens are small characters with the avatar as their face, the colour's shape mark as a badge, and legs that walk from square to square. Performance mode uses flat characters with a two-frame leg swing, open eyes and no shadows.
+Each yard shows its player's avatar as a faint watermark with a face: the top two token spots are blinking eyes in the player's colour and the bottom two are cheeks. Each token is the creature of its avatar: a frog hops on big back legs, a cat trots with a swinging tail, an owl waddles and flaps, a rocket floats, and food and sports things walk on little legs. The player's colour edges the body and rings its feet, with the shape mark as a badge. Prints match (paws, webbed feet, shoes or dots). Three or more tokens on a square show a count. Performance mode uses a two-frame leg swing, open eyes and no shadows.
+
+## Frame timing
+
+Debug and profile builds can start a benchmark match (one person, three bots, nothing saved) and log `[frames]` lines:
+
+```powershell
+adb shell am force-stop com.raceboard.board_games
+adb shell am start -n com.raceboard.board_games/.MainActivity --es route /bench/optimized
+adb logcat | findstr "[frames]"
+```
+
+Use `/bench/performance` for the flat mode.
 
 ## Using the Ludo module from another app
 
